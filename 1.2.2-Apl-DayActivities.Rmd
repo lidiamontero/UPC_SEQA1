@@ -1,0 +1,380 @@
+---
+title: "AMB - Sustainability"
+author: "inLab-CARNET-UPC"
+date: \today
+output:
+  word_document:
+    toc: no
+    toc_depth: '4'
+  html_document:
+    toc: no
+    toc_depth: '4'
+  pdf_document:
+    latex_engine: pdflatex
+    number_sections: yes
+    toc_depth: 4
+    toc: yes
+geometry: left=1.5cm,right=1.5cm,top=1.0cm,bottom=1.0cm
+fontsize: 10pt
+subtitle: 'Summaries EMIT Data'
+classoption: a4paper
+editor_options: 
+  chunk_output_type: console
+---
+```{r, include=FALSE, echo=FALSE}
+# Load Required Packages: to be increased over the course
+options(contrasts=c("contr.treatment","contr.treatment"))
+requiredPackages <- c("missMDA","effects","FactoMineR","car","factoextra","RColorBrewer","ggplot2","dplyr","ggmap","ggthemes","knitr","chemometrics","rpart","ROCR","corrr","readxl","RColorBrewer","ggplot2","corrplot","plotly","xlsx","reshape2","scales","stargazer","kableExtra","AER","MASS","lattice")
+
+#use this function to check if each package is on the local machine
+#if a package is installed, it will be loaded
+#if any are not, the missing package(s) will be installed and loaded
+package.check <- lapply(requiredPackages, FUN = function(x) {
+  if (!require(x, character.only = TRUE)) {
+    install.packages(x, dependencies = TRUE)
+    library(x, character.only = TRUE)
+  }
+})
+#verify they are loaded
+search()
+
+```
+
+# Carregar dades completes 
+
+```{r}
+# Clear plots
+if(!is.null(dev.list())) dev.off()
+# Clean workspace
+rm(list=ls())
+
+setwd("C:/Users/lmontero/Dropbox/MEU_PROJECTINLAB/DADES/SUSTAINABILITY/APLICACIO-FRAGMENTATION/1.2 - PREPARATION")
+pathfile<-"C:/Users/lmontero/Dropbox/MEU_PROJECTINLAB/DADES/SUSTAINABILITY/APLICACIO-FRAGMENTATION/1.2 - PREPARATION/"
+
+load(paste0(pathfile,"DataSources_v1.RData"))
+# Subconjunts de codis EMO per ambits
+# rm(list=c("dfnom3taz","dfvalidtaz"))
+
+zones_bcn <- sort( filter(corresp, nom == "Barcelona")$codi_emo      )                         
+# 198 zones
+zones_etm <- sort( filter(corresp, cor_nom == "ETM" & nom != "Barcelona")$codi_emo       )           
+# 143 zones
+zones_amb <- sort( filter(corresp, (cor_nom == "AMB")|(cor_nom == "ETM" ))$codi_emo      )                                 # 372 zones
+zones_rmb <- c("8999901", "8999902", "8999903", "8999904", "8999905", "8999906", "8999907",   # 14 zones
+               "8999908", "8999909", "8999910", "8999911", "8999912", "8999913" ,"8999914")
+zones_ext <- c("resto_Bcn","Tarragona","Gerona","Lerida","resto_esp","None")                          # 5 zones + None pels no classificats en residència
+
+muni_pc <- c("08015","08019","08194","08245","08101","08282","08126","08125","08077","08221","08211","08217","08073","08169","08200","08301","08089" ,"08056")
+
+ll<-which(corresp$munnom %in% muni_pc);length(ll)
+zones_pc<-sort(corresp$codi_emo[ll]);length(zones_pc)
+
+muni_pcsbnc <- c("08015","08194","08245","08101","08282","08126","08125","08077","08221","08211","08217", "08073","08169","08200","08301","08089" ,"08056")
+
+ll<-which(corresp$munnom %in% muni_pcsbnc);length(ll)
+zones_pcsbnc <-sort(corresp$codi_emo[ll]);length(zones_pcsbnc)
+
+muni_amb <- c("08015","08904","08252","08019","08020","08054","08194","08266","08068","08072","08073","08245","08101","08123","08282","08126",
+"08157", "08905","08158","08125","08077","08180","08221","08196","08211","08217", "08169","08200","08301","08089","08244","08263","08289","08056","08204","08205")
+
+ll<-which(muni_pc %in% muni_amb)
+muni_ambspc <- muni_amb[-ll]
+
+ll<-which(corresp$munnom %in% muni_ambspc);length(ll)
+zones_ambspc <- sort( corresp$codi_emo[ll] );length(zones_ambspc)
+
+zones_rmbno <- sort(filter(corresp, (codi_nommon %in% zones_rmb))$codi_emo)  # 210 zones
+zones_extno <- sort(filter(corresp, (codi_nommon %in% zones_ext))$codi_emo)  # 0 zones
+
+# ambits_noms = c("BCN","ETM","AMB","RMB","EXT")
+# ambits <- list(zones_bcn, zones_etm, zones_amb, zones_rmb, zones_ext)
+# ambitsNO <- list(zones_bcn, zones_etm, zones_amb, zones_rmbno, zones_ext)
+unlistambitsNO <- sort(unlist(list(zones_amb, zones_rmb, zones_rmbno, zones_ext)))
+unlistambits <- sort(unlist(list(zones_amb, zones_rmbno)))
+```
+
+# Mètodes útils i càlculs de KPIs
+```{r}
+calcQ <- function(x) {
+  s.x <- summary(x)
+  iqr<-s.x[5]-s.x[2]
+  list(souti=s.x[2]-3*iqr, mouti=s.x[2]-1.5*iqr, min=s.x[1], q1=s.x[2], q2=s.x[3], 
+       q3=s.x[5], max=s.x[6], mouts=s.x[5]+1.5*iqr, souts=s.x[5]+3*iqr ) }
+
+mape<- function(matriu) {
+  xx<-as.vector(abs((((matriu+t(matriu))/2)-matriu)/matriu));
+  xy<-ifelse(!is.finite(xx),NA,xx);
+  100*mean(xy,na.rm=T)
+}
+mape2<- function(matriu1,matriu2) {
+  xx<-as.vector(abs(((matriu1)-matriu2)/((matriu1+matriu2)/2)));
+  xy<-ifelse(!is.finite(xx),NA,xx);
+  100*mean(xy,na.rm=T)
+}
+
+maxmape2<- function(matriu1,matriu2) {
+  xx<-as.vector(abs(((matriu1)-matriu2)/((matriu1+matriu2)/2)));
+  xy<-ifelse(!is.finite(xx),NA,xx);
+  100*max(xy,na.rm=T)
+}
+
+R2<- function(matriu1,matriu2) {
+  xx<-as.vector(matriu1);
+  xy<-as.vector(matriu2);
+  mm<-lm(xy~xx);
+  lmm<-lm(log(xy+1)~log(xx+0.1));
+  list( r1=100*summary(mm)$r.squared, r2=100*summary(lmm)$r.squared,
+  p1={plot(xx,xy,main="Matriu 2 vs Matriu 1");abline(mm)},
+  p2={plot(log(xx+0.1),log(xy+0.1),main="Matriu 2 vs Matriu 1 -logscale");abline(lmm)});
+}
+
+R2no0<- function(matriu1,matriu2) {
+  xx<-as.vector(matriu1);
+  ll<-which(xx>0)
+  xy<-as.vector(matriu2);
+  mm<-lm(xy[ll]~xx[ll])
+  100*summary(mm)$r.squared
+}
+
+# SSIM Similarity Index by Wang
+
+SSIM<- function(OD_Hist, OD_star, C1, C2, C3, alpha, beta, gamma)
+  {
+    mean_Hist = mean(OD_Hist);
+    mean_star = mean(OD_star);
+    dev_Hist = sd(OD_Hist);
+    dev_star = sd(OD_star);
+    cov = cov(OD_star, OD_Hist);
+    L = (2*mean_Hist*mean_star + C1)/(mean_Hist^2 + mean_star^2 + C1);
+    C = (2*dev_Hist*dev_star + C2)/(dev_Hist^2 + dev_star^2 + C2);
+    S = (cov + C3)/(dev_star*dev_Hist + C3);
+    SSIM = (L^alpha)*(C^beta)*(S^gamma)
+}
+
+MSSIM<- function(OD_Hist, OD_star, by_rows, by_cols, weight_Hist)
+{
+  #browser();
+    dim_mat<-nrow(OD_Hist);
+    ww<-1;
+    Mat_Hist<-OD_Hist;
+    Mat_star<-OD_star;
+    if (!is.matrix(OD_Hist))
+    { 
+      dim_mat = round(sqrt(length(OD_Hist)),dig=0);
+      Mat_Hist = matrix(OD_Hist, nrow=dim_mat, ncol=dim_mat,byrow=TRUE);
+      Mat_star = matrix(OD_star, nrow=dim_mat, ncol=dim_mat,byrow=TRUE);
+    }
+    if (by_rows)
+    {
+        count = 0;
+        SSIM_sum = 0;
+        for (i in 1:dim_mat)
+        { 
+            if ( (max(Mat_Hist[i,]) > 0) | (max(Mat_star[i,]) > 0))
+            { 
+              if( weight_Hist )
+              { 
+                ww<-sum(Mat_Hist[i,])
+                SSIM_sum = SSIM_sum + ww*SSIM(Mat_Hist[i,], Mat_star[i,], 1, 1, 1/2, 1, 1, 1);
+                count = count + ww;
+              }else{
+                SSIM_sum = SSIM_sum + SSIM(Mat_Hist[i,], Mat_star[i,], 1, 1, 1/2, 1, 1, 1);
+                count = count + 1;
+              }
+            }
+         }
+        MSSIM_row = min(1, SSIM_sum /count);
+    }
+    else
+    {
+      MSSIM_row = 0;
+      }
+
+    if (by_cols)
+    { 
+        count = 0;
+        SSIM_sum = 0;
+        for (j in 1:dim_mat )
+          { 
+            if ( (max(Mat_Hist[,j]) > 0) | (max(Mat_star[,j]) > 0))
+            { 
+              if (weight_Hist){ 
+                ww<-sum(Mat_Hist[,j]);
+                SSIM_sum = SSIM_sum + ww*SSIM(Mat_Hist[,j], Mat_star[,j], 1, 1, 1/2, 1, 1, 1);
+                count = count + ww;
+              }else{
+                SSIM_sum = SSIM_sum + SSIM(Mat_Hist[,j], Mat_star[,j], 1, 1, 1/2, 1, 1, 1);
+                count = count + 1;                
+              }
+            }
+          }
+          MSSIM_col = min(1, SSIM_sum /count);
+          }
+        else
+        { 
+            MMSIM_col = 0;
+            }
+list(MSSIM_row=MSSIM_row, MSSIM_col=MSSIM_col);
+  }
+```
+
+```{r}
+
+names(dfmt)
+table(dfmt$id,useNA="always")
+
+# id,ordre, purmod,hini,minini,durada,mode1,mode2,mode3, taz.emef.x, taz.emef.y, mun.ori, mun.des
+
+dfmad<-dfmt[,c("id","ordre", "year","PURMOD","hini","minut","durada","mode1","mode2","mode3", "taz.emef.x", "taz.emef.y", "mun.ori", "mun.des")]
+
+library(lubridate)
+library(hms)
+head(paste0(sprintf("%02d",dfmad$hini),":",sprintf("%02d",dfmad$minut),":","00"))
+dfmad$tini <- lubridate::hms(paste0(sprintf("%02d",dfmad$hini),":",sprintf("%02d",dfmad$minut),":","00"), roll = TRUE)
+```
+
+
+```{r}
+# dfmad$diftini<-(dfmad$tini)
+dfaux<-dfmad[, c("id","ordre","year","tini","durada")]
+inicidia<-lubridate::hms("24:00:00");inicidia
+dfaux$tdur <- lubridate::hms(paste0("00:",sprintf("%03d",dfmad$durada),":00"), roll = TRUE)
+dfaux <- dfaux %>% 
+  group_by(id,year) %>%
+  mutate(time.difference =hms::hms(lead(tini,default=inicidia)-tini-tdur),
+         time.end =lead(tini),
+         last = ifelse( id != lead(id), 1, 0),
+         first = ifelse( id != lag(id), 1, 0)) %>% as.data.frame()
+  # mutate(time.difference =hms(lead(tini)-tini),roll=T) %>% as.data.frame()
+
+ll<-which(is.na(dfaux$last));length(ll)
+if (length(ll)>0) dfaux$last[ll] <- 1
+
+ll<-which(is.na(dfaux$first));length(ll)
+if (length(ll)>0) dfaux$first[ll] <- 1
+
+dfaux[dfaux$id==31,]
+dfmad[dfmad$id==31,]
+str(dfaux)
+# Cal analitzar les diferències negatives, algunes per errors en les dades i d'altres per final de registre passades les 24h
+# 
+ll<-which((dfaux$time.difference < hms::hms(0,0,0)) & dfaux$last == 1);length(ll)
+if (length(ll)>0) dfaux$time.difference[ll] <- hms::hms(0,0,0)
+
+ll<-which((dfaux$time.difference < hms::hms(0,0,0)) & dfaux$last != 1);length(ll)
+head(dfaux[ll,],20)
+tail(dfaux[ll,],20)
+lli<-which(dfaux$id %in% dfaux$id[ll]);length(lli)
+head(dfaux[lli,],20)
+tail(dfaux[lli,],20)
+# Remove those id registers being time.difference < 0
+dfaux <- dfaux[-lli,]
+dfmad <- dfmad[-lli,]
+
+ll<-which((dfaux$first == 1) & (dfaux$ordre !=1));length(ll)
+head(dfaux[ll,],20)
+tail(dfaux[ll,],20)
+lli<-which(dfaux$id %in% dfaux$id[ll]);length(lli)
+head(dfaux[lli,],20)
+tail(dfaux[lli,],20)
+
+# Remove those id registers being ordre > 1 and first = 1
+dfaux <- dfaux[-lli,]
+dfmad <- dfmad[-lli,]
+
+```
+
+
+```{r}
+
+dfmad$time.difference <- 0
+dfmad$time.difference <- dfaux$time.difference
+dfmad$time.end <- dfaux$time.end
+ll<-which(is.na(dfmad$time.end));length(ll)
+if (length(ll)>0) dfmad$time.end[ll] <- dfaux$tini[ll] + dfaux$tdur[ll]
+dfmad$first <- dfaux$first
+dfmad$last <- dfaux$last
+
+head(dfmad)
+# if ordre = 1  opur H/C/O/W/T, tini,purmod,  T, durada, dpur H/C/W/O/T tend 
+# if ordre > 1  lag(dpur),  tini,purmod, T, durada, dpur, tend
+```
+
+
+```{r}
+dfmad$opur <-"H"
+dfmad$tpur <- "T"
+dfmad$dpur <- "H"
+dfmad$tdur <- lubridate::hms(paste0("00:",sprintf("%02d",dfmad$durada),":00"),roll=T)
+
+ll<-which(is.na(dfmad$durada));length(ll)
+lli<-which(dfmad$id %in% dfmad$id[ll]);length(lli)
+if (length(lli)>0 ) dfmad<-dfmad[-lli,]
+ll<-which((dfmad$durada)>300);length(ll)
+lli <- which( dfmad$id %in% dfmad$id[ll]);length(lli)
+if (length(lli)>0 ) dfmad<-dfmad[-lli,]
+dfmad[dfmad$id==130,]
+```
+
+
+```{r}
+ll<-which(dfmad$ordre==1)
+dfmad$opur[ll] <-ifelse(dfmad$PURMOD[ll] %in% c("HBW","HBC","HBO"),"H","O")
+dfmad$dpur <-ifelse(dfmad$PURMOD %in% c("HBW","NHBW"),"W",dfmad$dpur)
+dfmad$dpur <-ifelse(dfmad$PURMOD %in% c("HBC"),"C",dfmad$dpur)
+dfmad$dpur <-ifelse(dfmad$PURMOD %in% c("HBO","NHBO"),"O",dfmad$dpur)
+dfmad$dpur <-ifelse(dfmad$PURMOD %in% c("NHBH"),"H",dfmad$dpur)
+
+dfaux1 <- dfmad[,c("id","year","dpur")] %>% 
+  group_by(id,year) %>% 
+  mutate(puraux =lag(dpur)) %>% as.data.frame()
+
+ll <- which( !is.na(dfaux1$puraux));length(ll)
+if (length(ll)>0) dfmad$opur[ll] <- dfaux1$puraux[ll]
+
+head(dfmad[,c("id","ordre","year","opur","tini","time.end","PURMOD","tpur","durada","dpur","tdur","time.difference")],20)
+
+dfmad[dfmad$id==31,]
+summary(dfmad$ordre)
+ll <- which(dfmad$ordre==17)
+dfmad[ll,]
+ll <- which(dfmad$id==77363 )
+dfmad[ll,c("id","ordre","year","opur","tini","time.end","PURMOD","tpur","durada","dpur","tdur","time.difference")]
+
+dfmad[dfmad$id==130,c("id","ordre","year","opur","tini","time.end","PURMOD","tpur","durada","dpur","tdur","time.difference")]
+
+# We have to check those registers having tddur <0
+# 
+# Define for each tripmaker a list containing (purpose,duration) and a list adding all time durations during a day
+rm(list=c("dfaux1","dfaux2","dfaux"))
+```
+
+# Definir un registre 0 per cada id, en la vinantesa que ha de contenir el temps que es passa a casa/X abans del primer desplaçament del dia
+
+```{r}
+dfaux2 <- dfmad
+inicidia<-lubridate::hms("00:00:00")
+dfregnul <- data.frame(id=0, ordre=0, year=0, PURMOD="HBH", hini=0, minut=0, durada=0, mode1=NA, mode2=NA, mode3=NA, taz.emef.x=NA, taz.emef.y=NA, mun.ori=NA, mun.des=NA, tini=inicidia, time.difference=hms::hms(0,0,0), time.end=inicidia, first=1, last=0, opur="H", tpur="T", dpur="H", tdur=inicidia)
+
+ll<-which(dfmad$first==1);length(ll)
+for (i in 1:length(ll)){
+  lpos <- ll[i]
+  dfregnul[1,c(1,3,11,12,13,14)] <- dfaux2[lpos,c(1,3,11,11,13,13)] # 15:17
+  dfregnul[1,"time.difference"] <- hms::hms(dfaux2[lpos,"tini"]-inicidia)
+  dfaux2 <- rbind(dfaux2,dfregnul)
+  print(i)
+}
+dfaux2<- arrange(dfaux2, year,id, ordre)
+
+dfmadchain <- dfaux2
+```
+
+
+# Guardar resultat
+
+```{r}
+pathfile <-"C:/Users/lmontero/Dropbox/MEU_PROJECTINLAB/DADES/SUSTAINABILITY/APLICACIO-FRAGMENTATION/1.2 - PREPARATION/"
+save(list=c("corresp","dfimp","dfpred","dfmo","dfmt","dfnom3OD","dfnomw","dfvalid","dfnom3taz","dfvalidtaz"), file = paste0(pathfile,"DataSources_v2.RData"))
+
+save(list=c("dfmo","dfmt","dfmad","dfmadchain"), file = paste0(pathfile,"1819EMEF_v2.RData"))
+```

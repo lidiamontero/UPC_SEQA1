@@ -1,0 +1,546 @@
+---
+title: "AMB - Sustainability"
+author: "inLab-CARNET-UPC"
+date: \today
+output:
+  word_document:
+    toc: no
+    toc_depth: '4'
+  html_document:
+    toc: no
+    toc_depth: '4'
+  pdf_document:
+    latex_engine: pdflatex
+    number_sections: yes
+    toc_depth: 4
+    toc: yes
+geometry: left=1.5cm,right=1.5cm,top=1.0cm,bottom=1.0cm
+fontsize: 10pt
+subtitle: 'Summaries EMIT Data'
+classoption: a4paper
+editor_options: 
+  chunk_output_type: console
+---
+```{r, include=FALSE, echo=FALSE}
+# Load Required Packages: to be increased over the course
+options(contrasts=c("contr.treatment","contr.treatment"))
+requiredPackages <- c("TraMineR","runner","lubridate","hms","missMDA","effects","FactoMineR","car","factoextra","RColorBrewer","ggplot2","dplyr","ggmap","ggthemes","knitr","chemometrics","rpart","ROCR","corrr","readxl","RColorBrewer","ggplot2","corrplot","plotly","xlsx","reshape2","scales","stargazer","kableExtra","AER","MASS","lattice")
+
+#use this function to check if each package is on the local machine
+#if a package is installed, it will be loaded
+#if any are not, the missing package(s) will be installed and loaded
+package.check <- lapply(requiredPackages, FUN = function(x) {
+  if (!require(x, character.only = TRUE)) {
+    install.packages(x, dependencies = TRUE)
+    library(x, character.only = TRUE)
+  }
+})
+#verify they are loaded
+search()
+
+```
+
+# Carregar dades completes 
+
+```{r}
+# Clear plots
+if(!is.null(dev.list())) dev.off()
+# Clean workspace
+rm(list=ls())
+
+setwd("C:/Users/lmontero/Dropbox/MEU_PROJECTINLAB/DADES/SUSTAINABILITY/APLICACIO-FRAGMENTATION/1.2 - PREPARATION")
+pathfile<-"C:/Users/lmontero/Dropbox/MEU_PROJECTINLAB/DADES/SUSTAINABILITY/APLICACIO-FRAGMENTATION/1.2 - PREPARATION/"
+
+load(paste0(pathfile,"1819EMEF_v2.RData"))
+load(paste0(pathfile,"DataSources_v2.RData"))
+
+```
+
+# Mètodes útils i càlculs de KPIs
+```{r}
+calcQ <- function(x) {
+  s.x <- summary(x)
+  iqr<-s.x[5]-s.x[2]
+  list(souti=s.x[2]-3*iqr, mouti=s.x[2]-1.5*iqr, min=s.x[1], q1=s.x[2], q2=s.x[3], 
+       q3=s.x[5], max=s.x[6], mouts=s.x[5]+1.5*iqr, souts=s.x[5]+3*iqr ) }
+
+mape<- function(matriu) {
+  xx<-as.vector(abs((((matriu+t(matriu))/2)-matriu)/matriu));
+  xy<-ifelse(!is.finite(xx),NA,xx);
+  100*mean(xy,na.rm=T)
+}
+mape2<- function(matriu1,matriu2) {
+  xx<-as.vector(abs(((matriu1)-matriu2)/((matriu1+matriu2)/2)));
+  xy<-ifelse(!is.finite(xx),NA,xx);
+  100*mean(xy,na.rm=T)
+}
+
+maxmape2<- function(matriu1,matriu2) {
+  xx<-as.vector(abs(((matriu1)-matriu2)/((matriu1+matriu2)/2)));
+  xy<-ifelse(!is.finite(xx),NA,xx);
+  100*max(xy,na.rm=T)
+}
+
+R2<- function(matriu1,matriu2) {
+  xx<-as.vector(matriu1);
+  xy<-as.vector(matriu2);
+  mm<-lm(xy~xx);
+  lmm<-lm(log(xy+1)~log(xx+0.1));
+  list( r1=100*summary(mm)$r.squared, r2=100*summary(lmm)$r.squared,
+  p1={plot(xx,xy,main="Matriu 2 vs Matriu 1");abline(mm)},
+  p2={plot(log(xx+0.1),log(xy+0.1),main="Matriu 2 vs Matriu 1 -logscale");abline(lmm)});
+}
+
+R2no0<- function(matriu1,matriu2) {
+  xx<-as.vector(matriu1);
+  ll<-which(xx>0)
+  xy<-as.vector(matriu2);
+  mm<-lm(xy[ll]~xx[ll])
+  100*summary(mm)$r.squared
+}
+
+# SSIM Similarity Index by Wang
+
+SSIM<- function(OD_Hist, OD_star, C1, C2, C3, alpha, beta, gamma)
+  {
+    mean_Hist = mean(OD_Hist);
+    mean_star = mean(OD_star);
+    dev_Hist = sd(OD_Hist);
+    dev_star = sd(OD_star);
+    cov = cov(OD_star, OD_Hist);
+    L = (2*mean_Hist*mean_star + C1)/(mean_Hist^2 + mean_star^2 + C1);
+    C = (2*dev_Hist*dev_star + C2)/(dev_Hist^2 + dev_star^2 + C2);
+    S = (cov + C3)/(dev_star*dev_Hist + C3);
+    SSIM = (L^alpha)*(C^beta)*(S^gamma)
+}
+
+MSSIM<- function(OD_Hist, OD_star, by_rows, by_cols, weight_Hist)
+{
+  #browser();
+    dim_mat<-nrow(OD_Hist);
+    ww<-1;
+    Mat_Hist<-OD_Hist;
+    Mat_star<-OD_star;
+    if (!is.matrix(OD_Hist))
+    { 
+      dim_mat = round(sqrt(length(OD_Hist)),dig=0);
+      Mat_Hist = matrix(OD_Hist, nrow=dim_mat, ncol=dim_mat,byrow=TRUE);
+      Mat_star = matrix(OD_star, nrow=dim_mat, ncol=dim_mat,byrow=TRUE);
+    }
+    if (by_rows)
+    {
+        count = 0;
+        SSIM_sum = 0;
+        for (i in 1:dim_mat)
+        { 
+            if ( (max(Mat_Hist[i,]) > 0) | (max(Mat_star[i,]) > 0))
+            { 
+              if( weight_Hist )
+              { 
+                ww<-sum(Mat_Hist[i,])
+                SSIM_sum = SSIM_sum + ww*SSIM(Mat_Hist[i,], Mat_star[i,], 1, 1, 1/2, 1, 1, 1);
+                count = count + ww;
+              }else{
+                SSIM_sum = SSIM_sum + SSIM(Mat_Hist[i,], Mat_star[i,], 1, 1, 1/2, 1, 1, 1);
+                count = count + 1;
+              }
+            }
+         }
+        MSSIM_row = min(1, SSIM_sum /count);
+    }
+    else
+    {
+      MSSIM_row = 0;
+      }
+
+    if (by_cols)
+    { 
+        count = 0;
+        SSIM_sum = 0;
+        for (j in 1:dim_mat )
+          { 
+            if ( (max(Mat_Hist[,j]) > 0) | (max(Mat_star[,j]) > 0))
+            { 
+              if (weight_Hist){ 
+                ww<-sum(Mat_Hist[,j]);
+                SSIM_sum = SSIM_sum + ww*SSIM(Mat_Hist[,j], Mat_star[,j], 1, 1, 1/2, 1, 1, 1);
+                count = count + ww;
+              }else{
+                SSIM_sum = SSIM_sum + SSIM(Mat_Hist[,j], Mat_star[,j], 1, 1, 1/2, 1, 1, 1);
+                count = count + 1;                
+              }
+            }
+          }
+          MSSIM_col = min(1, SSIM_sum /count);
+          }
+        else
+        { 
+            MMSIM_col = 0;
+            }
+list(MSSIM_row=MSSIM_row, MSSIM_col=MSSIM_col);
+  }
+```
+
+# Cal construir per cada id-year la cadena de viatges diaris
+## Primer sumo totes les durades de les estades time.difference
+
+```{r}
+names(dfmadchain)
+dfmadchain$tacum <-  hms::hms(minutes=dfmadchain$durada) + dfmadchain$time.difference
+
+inicidia <-hms::hms(0,0,0)
+dfmadchain <- dfmadchain %>% group_by(id,year) %>%
+  mutate(    ttacum = sum_run(x = tacum, na_rm=TRUE ) ) %>%
+  as.data.frame()
+
+names(dfmadchain)
+noms<-names(dfmadchain)[c(1:4,15:25)];noms
+head(dfmadchain[,noms],20)
+str(dfmadchain)
+
+dfmadchain$tdur <- as.numeric(difftime(hms::hms(minutes=60*hour(dfmadchain$tdur)+minute(dfmadchain$tdur)),inicidia),unit="mins")
+dfmadchain$time.difference <- as.numeric(difftime(dfmadchain$time.difference,inicidia),unit="mins")
+dfmadchain$tacum <- as.numeric(dfmadchain$tacum,unit="mins")
+dfmadchain$ttacum <- as.numeric(difftime(hms::hms(seconds=dfmadchain$ttacum),inicidia),unit="mins")
+dfmadchain$ttacum[1:10]
+
+dfmadchain <- dfmadchain %>% group_by(id,year) %>%
+  mutate( 
+    lpur = runner( paste( ifelse(ordre!=0,paste(tpur,dpur,sep="-"),dpur),collapse="-") ) ,
+   ltime = runner( paste( ifelse( ordre !=0,paste(tdur, time.difference,sep="-"), time.difference ), collapse="-")) )%>%
+  as.data.frame()
+
+max(dfmadchain$ttacum)
+24*60*60;14*60
+names(dfmadchain)
+noms<-names(dfmadchain)[c(1:4,15:27)];noms
+head(dfmadchain[,noms],20)
+head(dfmadchain[,c(4:5,6,7,16,23:27)],20)
+
+# Check that all trips start at home
+ll<-which((dfmadchain$ordre==1 )&(dfmadchain$PURMOD %in% c("NHBW","NHBH","NHBO")));length(ll)
+head(dfmadchain[ll,noms],20)
+lli <- which(dfmadchain$id %in% dfmadchain$id[ll]);length(lli)
+dfmadchain <- dfmadchain[-lli,]
+```
+
+# Redefinir modes
+
+```{r}
+#  levels(dfmadchain$mode1)
+#  [1] "Caminant"                                                                     
+#  [2] "Autobús empresa"                                                              
+#  [3] "Autobús escolar"                                                              
+#  [4] "Autocar"                                                                      
+#  [5] "Autobús"                                                                      
+#  [6] "Metro"                                                                        
+#  [7] "Tramvia"                                                                      
+#  [8] "Ferrocarrils Generalitat (F.G.C.)"                                            
+#  [9] "Rodalies Renfe"                                                               
+# [10] "Renfe regional/mitja distància"                                               
+# [11] "Taxi"                                                                         
+# [12] "Cotxe com a conductor"                                                        
+# [13] "Cotxe com a acompanyant"                                                      
+# [14] "Moto com a conductor"                                                         
+# [15] "Moto com a acompanyant"                                                       
+# [16] "Furgoneta/camió"                                                              
+# [17] "Bicicleta"                                                                    
+# [18] "Cadira de rodes, scooter o vehicles per persones amb dificultats de mobilitat"
+# [19] "Patinet"                                                                      
+# [20] "Segway o altres ginys"                                                        
+# [21] "Altres mitjans públics"                                                       
+# [22] "Altres mitjans privats"                                                       
+# [23] "Altres mitjans"                                                               
+# [24] "NS/NC"
+
+levels(dfmadchain$mode1)<-c(levels(dfmadchain$mode1),"None")
+levels(dfmadchain$mode2)<-c(levels(dfmadchain$mode2),"None")
+levels(dfmadchain$mode3)<-c(levels(dfmadchain$mode3),"None")
+
+dfmadchain$gmode1 <- dfmadchain$mode1 
+dfmadchain$gmode2 <- dfmadchain$mode2
+dfmadchain$gmode3 <- dfmadchain$mode3
+
+dfmadchain$gmode1[is.na(dfmadchain$gmode1)] <- "None"
+dfmadchain$gmode2[is.na(dfmadchain$gmode2)] <- "None"
+dfmadchain$gmode3[is.na(dfmadchain$gmode3)] <- "None"
+
+levels(dfmadchain$gmode1) <-c("W","B","B","B","B","M","T","T","T","T","C","C","C","C","C","C","W","W","P","P","None","None","None","None","None")
+levels(dfmadchain$gmode2) <-c("W","B","B","B","B","M","T","T","T","T","C","C","C","C","C","C","W","W","P","P","None","None","None","None","None","None")
+levels(dfmadchain$gmode3) <-c("W","B","B","B","B","M","T","T","T","T","C","C","C","C","C","C","W","W","P","P","None","None","None","None","None","None")
+
+dfmadchain$gmode1 <- as.character(dfmadchain$gmode1)
+dfmadchain$gmode2 <- as.character(dfmadchain$gmode2)
+dfmadchain$gmode3 <- as.character(dfmadchain$gmode3)
+
+dfmadchain$gmode <- ifelse(dfmadchain$gmode1=="None","",dfmadchain$gmode1)
+ll<-which((dfmadchain$gmode1!="None") &(dfmadchain$gmode2!="None") & (dfmadchain$gmode3=="None") );length(ll)
+dfmadchain$gmode[ll] <- paste0(dfmadchain$gmode[ll] ,":",dfmadchain$gmode2[ll] )
+ll<-which((dfmadchain$gmode1=="None") &(dfmadchain$gmode2!="None") & (dfmadchain$gmode3=="None") );length(ll)
+dfmadchain$gmode[ll] <- dfmadchain$gmode2[ll]
+ll<-which((dfmadchain$gmode1!="None") & (dfmadchain$gmode2!="None") & (dfmadchain$gmode3!="None") );length(ll)
+dfmadchain$gmode[ll]  <- paste0(dfmadchain$gmode[ll] ,":",dfmadchain$gmode3[ll] )
+
+dfmadchain$gmode <- factor(dfmadchain$gmode)
+levels(dfmadchain$gmode)
+levels(dfmadchain$gmode) <- c("","B","B" ,"B:C", "B:M", "B:P", "B:T", "B" ,"C" ,  "B:C", "C" ,"C:M", "C:P", "C:T" ,"C", "M" ,  "B:M", "C:M","M" ,"M:P", "M:T", "M" ,"P", "B:P" ,"C:P" ,"M:P" ,"P" ,"P:T", "P" ,"T", "B:T", "C:T" ,"M:T", "P:T", "T" ,"T","W" ,  "B", "C", "M", "P" ,"T", "W")
+levels(dfmadchain$gmode)
+
+
+# Now combine all transport modes  
+dfmadchain <- dfmadchain %>% group_by(id,year) %>% 
+  mutate( 
+    lmode = runner( paste( gmode,collapse="-") ) ) %>% as.data.frame()
+
+head(dfmadchain[,noms],20)
+```
+
+# Retenir només darrer registre
+
+```{r}
+names(dfmadchain)
+noms<-names(dfmadchain)[c(1:3,25:27,32)];noms
+head(dfmadchain[,noms],20)
+ll<-which( dfmadchain$last==1);length(ll)
+dfmadlast<-dfmadchain[ll,noms]
+dfaux<-dfmadlast[1:5,]
+dfaux
+max(dfmadlast$ttacum)
+# Passar a format compatible TraMineR
+# id ordre year ttacum p1...p1965 
+# 2-H 4-T 5-W 3-O 1-C
+
+dftraminer<-matrix(2,nrow=nrow(dfmadlast),ncol=1965,byrow=T)
+for (i in 1:nrow(dfmadlast))
+  {
+    ttime <- dfmadlast$ttacum[i]
+    statetime<-as.numeric(unlist(strsplit(dfmadlast$ltime[i], split="-")))
+    cumtime <- cumsum( statetime )
+    nstates <- length(cumtime)
+    statepur<-factor(unlist(strsplit(dfmadlast$lpur[i], split="-")), levels=c("C","H","O","T","W"), labels=c("C","H","O","T","W"))
+    ini <- ifi <- 1
+    for (t in 1:nstates) {
+      ifi <- cumtime[t]
+      if ( ifi >= ini) {dftraminer[i,ini:ifi] <- as.numeric(statepur[t])}
+      ini <- ifi +1
+    }
+}
+
+dim(dftraminer)
+dftraminer<-as.data.frame(dftraminer)
+dftraminer <-cbind(dfmadlast,dftraminer)
+
+names(dftraminer) # 1 al 7 dades originals dfmadlast 8 a 1972 minuts
+dftraminer[1,1000:1010]
+```
+
+# Càlcul d'estadístics
+
+```{r}
+# Entropy for eeach register: as many states as 2*ordre +1
+#
+entropy <- function( df ){
+  entro <- rep(0,nrow(df))
+  for (i in 1:nrow(df))
+  {
+    ttime <- df$ttacum[i]
+    statetime<-unlist(strsplit(df$ltime[i], split="-"))
+    nstates <- length(statetime)
+    pi <- rep(0.001,nstates) # Initialization
+    pi<-pmax(as.numeric(statetime)/ttime,pi)
+    entro[i] <-0-sum(pi*log(pi))
+  }
+  return(entro)
+}
+
+var.state.duration <- function( df ){
+  vari <- rep(0,nrow(df))
+  mitjana <- rep(0,nrow(df))
+  for (i in 1:nrow(df))
+  {
+    ttime <- df$ttacum[i]
+    statetime<-unlist(strsplit(df$ltime[i], split="-"))
+    vari[i] <-var(as.numeric(statetime))
+    mitjana[i] <-mean(as.numeric(statetime))
+  }
+  list(var=vari,mean=mitjana)
+}
+
+dftraminer$entropy <- entropy(dftraminer)
+hist(dftraminer$entropy)
+
+dftraminer.labels <- c("C","H","O","T","W")
+dftraminer.scode <- c("C","H","O","T","W")
+dftraminer.seq <- seqdef(dftraminer, 8:1972 , states = dftraminer.scode,labels = dftraminer.labels, xtstep =60,tick.last=T)
+
+# dftraminer.seqe <- seqecreate(dftraminer.seq)
+# fsubseq <- seqefsub(dftraminer.seqe, pmin.support = 0.05)
+# plot(fsubseq[1:15], col = "cyan")
+# 
+# discr <- seqecmpgroup(fsubseq, group =as.numeric( dftraminer$year))
+# plot(discr[1:6])
+# Entropy
+str(seqient(dftraminer.seq))
+dftraminer$nentropy <- as.vector(seqient(dftraminer.seq,norm=T))
+dftraminer$entropy <- as.vector(seqient(dftraminer.seq,norm=F))
+hist(dftraminer$nentropy)
+hist(seqient(dftraminer.seq,norm=F), main="Histogram - Non Normalized Entropy - \r EMEF 18 and 19 data",xlab="Entropy", col="cyan")
+
+# Turbulence
+# 
+dftraminer$turbulence <- as.vector(seqST(dftraminer.seq))
+par(mfrow=c(1,3))
+hist(dftraminer$nentropy, freq=F,col = "orange", main="Histogram - Entropy",xlab="Individual Normalized Entropy")
+lines(density(dftraminer$nentropy), col="blue")
+
+hist(dftraminer$turbulence, freq=F,col = "cyan", main="Histogram - Turbulence",xlab="Individual Turbulence")
+lines(density(dftraminer$turbulence), col="blue")
+
+hist(dftraminer$scomplexity, freq=F, col = "yellow", main="Histogram - Complexity",xlab="Individual Complexity")
+lines(density(dftraminer$scomplexity), col="blue")
+par(mfrow=c(1,1))
+
+summary(dftraminer[,c("entropy","nentropy","turbulence")])
+quantile(dftraminer$nentropy)
+quantile(dftraminer$turbulence)
+
+par(mfrow=c(1,1))
+plot(dftraminer$turbulence,dftraminer$nentropy,main="Entropy vs Turbulence - Correlation 0.42",cex.legend=0.75)
+plot(dftraminer$turbulence,dftraminer$scomplexity,main="Complexity vs Turbulence - Correlation 0.29",cex.legend=0.75)
+plot(dftraminer$nentropy,dftraminer$scomplexity,main="Complexity vs Entropy - Correlation 0.97",cex.legend=0.75)
+cor(dftraminer$turbulence,dftraminer$nentropy)
+cor(dftraminer$turbulence,dftraminer$scomplexity)
+cor(dftraminer$nentropy,dftraminer$scomplexity)
+
+# Complexity
+dftraminer$phi <- as.vector(seqsubsn(dftraminer.seq, DSS = T)) # number of distinct subsequences
+max.turb <- max(dftraminer$turbulence)
+dfaux.tmax <- subset(dftraminer, turbulence == max.turb)
+head(dfaux.tmax[,c(noms,"turbulence")])
+max.seq <- which(dftraminer$turbulence == max.turb)
+print(dftraminer.seq[max.seq, ], format = "SPS")
+dftraminer$var.duration<- var.state.duration(dftraminer)$var
+dftraminer$mean.duration<- var.state.duration(dftraminer)$mean
+dftraminer$npur<-(((nchar(dftraminer$lpur)+1)/2)-1)
+
+dftraminer$scomplexity <- 1
+
+# maxvar<-((dftraminer$npur)*(((1-dftraminer$mean.duration)^2)));maxvar
+# 
+# dftraminer$complexity<-as.vector(log(dftraminer$phi,base=2)+log(((1+maxvar)/(dftraminer$var.duration+1)),base=2))
+# summary(dftraminer$complexity)
+# hist(dftraminer$complexity)
+
+
+maxvalent <-max(dftraminer$entropy);maxvalent
+dftraminer$scomplexity<-as.vector(sqrt(dftraminer$npur+1)*sqrt((dftraminer$entropy)/(maxvalent*(dftraminer$npur))))
+summary(dftraminer$scomplexity)
+ll<-which(dftraminer$scomplexity>=max(dftraminer$scomplexity));ll
+dftraminer[ll,c(1:7,1970:1980)]
+dftraminer[1,c(1:7,1970:1980)]
+hist(dftraminer$scomplexity,col="red")
+```
+
+# Creuar amb dades dfmo
+
+```{r}
+names(dfmo)
+dftraminer <- left_join( dftraminer, dfmo[,c("id","year","genere","gedat","mun.res","activitat","estudis","pais","nauto","nmot","dia","pesaix","fwalk","fbike","fcard","fcarnd","ftpub","ttrips","daytt")],by=c("id"="id","year"="year")) %>% data.frame()
+
+tail(names(dftraminer),25)
+names(dftraminer)[c(1:7,1973:1997)]
+dftraminer <- dftraminer[,c(1:7,1973:1997,8:1972)]
+```
+
+# Comparativa turbulència i complexitat segons característiques individu
+
+```{r}
+attach(dftraminer)
+plot(scomplexity~genere)
+kruskal.test(scomplexity~genere)
+plot(scomplexity~year)
+kruskal.test(scomplexity~year)
+library(MASS)
+boxcox(scomplexity~genere+gedat+mun.res+year+nauto+nmot)
+m1<-lm(log(scomplexity)~genere+gedat+mun.res+year+nauto+nmot)
+m2<-step(m1,k=log(nrow(dftraminer)))
+summary(m2)
+plot(allEffects(m2))
+aov(m2)
+par(mfrow=c(2,2))
+plot(m2)
+par(mfrow=c(1,1))
+detach(dftraminer)
+```
+
+# Gràfics
+
+```{r}
+eixdia <- sort(rep(0:32,60));eixdia
+
+seqiplot(dftraminer.seq, with.legend = T, main = "Sequence plot (10 first units)", border = NA, cex.axis=0.75, xlab="Day Time in hours", ylab="Unit",xtlab=eixdia)
+seqfplot(dftraminer.seq, withlegend = T, xlab="Day Time in hours", border = NA, title = "Sequence frequency plot",xtlab=eixdia)
+seqdplot(dftraminer.seq, withlegend = T, xlab="Day Time in hours", border = NA, title = "State distribution plot",xtlab=eixdia)
+seqlegend(dftraminer.seq, fontsize = 1.3)
+seqHtplot(dftraminer.seq, xlab="Day Time in hours", title = "Entropy index",xtlab=eixdia)
+seqmtplot(dftraminer.seq, withlegend = T, xlab="Day Time in hours", border = NA, main = "Proportion of state by hour",xtlab=eixdia)
+seqplot(dftraminer.seq, withlegend = T, xlab="Day Time in hours", border = NA, main = "Proportion of state by hour",xtlab=eixdia, type="ms")
+
+# Sequence profile for groups defined by Min, Q1,Q2,Q3, Max turbulences
+
+turb.group <- cut(dftraminer$turbulence, quantile(dftraminer$turbulence), include.lowest = T)
+table(turb.group)
+seqfplot(dftraminer.seq, group = turb.group, pbarw = TRUE)
+
+```
+
+# Carregar característiques econòmiques de la TAZ-EMEF
+
+```{r}
+noms <- names(dftraminer)
+head(noms,35)
+tail(noms,30)
+noms <- names(dftraminer)[1:32];noms
+# load(paste0(pathfile,"DataSources_v2.RData"))
+# Vull carregar característiques socioeconòmiques de mun.res - dis.res
+ll<-which(dfmt$ordre==1);length(ll)
+dfaux <- left_join( dftraminer[,c(1:3)], dfmt[ll,c(1,25:27,39)]) %>% group_by(id,year) %>% as.data.frame()
+head(dfaux)
+dftraminer$pesaix <-dfaux$pesaix
+dftraminer$taz.emef <- dfaux$taz.emef
+# > names(dfpred)[c(112 , 100, 66, 83:88, 93:98,101:109)]
+#  [1] "taz.emef"               "r_rm_pond_pob"          "po_pob_total"           "h_hab_0_45_m2"         
+#  [5] "h_hab_46_60_m2"         "h_hab_61_80_m2"         "h_hab_81_100_m2"        "h_hab_101_120_m2"      
+#  [9] "h_hab_m120_m2"          "e_analf"                "e_sense_est"            "e_est_1r_grau"         
+# [13] "e_est_2n_grau"          "e_est_3r_grau"          "e_sense_info_menors_16" "pa_bus_regional"       
+# [17] "pa_bus_metrop"          "pa_bus_int"             "pa_bus_urba"            "pa_metro"              
+# [21] "pa_regionals"           "pa_rodalies"            "pa_tramvia"             "pa_tren_int"
+dftraminer$taz.emef <- factor(dftraminer$taz.emef)
+dfaux <- dfpred[,c(112 , 100, 66, 83:88, 93:98,101:109)] %>%
+  group_by(taz.emef) %>% 
+  mutate( r_rm_pond_pob = weighted.mean( r_rm_pond_pob, po_pob_total, na.rm = TRUE),
+          po_pob_total=sum(po_pob_total, na.rm = TRUE),
+          per_hab_100m_m2= 100*sum( h_hab_101_120_m2+h_hab_m120_m2, na.rm = TRUE)/sum( h_hab_0_45_m2 + h_hab_46_60_m2 + h_hab_61_80_m2 + h_hab_81_100_m2+h_hab_101_120_m2+h_hab_m120_m2, na.rm = TRUE),
+          per_est_3r_grau= 100*sum( e_est_3r_grau,ra.rm=T)/sum( e_analf + e_sense_est + e_est_1r_grau + e_est_2n_grau + e_est_3r_grau + e_sense_info_menors_16,ra.rm=T),
+          pa_bus= sum( pa_bus_regional + pa_bus_metrop + pa_bus_int+ pa_bus_urba, na.rm = T ),
+          pa_metram= sum( pa_metro + pa_tramvia,na.rm=T),
+          pa_tren= sum( pa_regionals + pa_rodalies + pa_tren_int,na.rm = T )) %>%
+  distinct(taz.emef, .keep_all=TRUE) %>%  as.data.frame()
+names(dfaux)[c(1:3,25:29)]
+dfaux1 <- left_join( dftraminer[,c(1,3,1998)], dfaux[,c(1:3,25:29)]) %>% group_by(taz.emef) %>% as.data.frame()
+
+dftraminer <- left_join( dftraminer, dfaux1) %>% group_by(id,year) %>% as.data.frame()
+
+noms <- names(dftraminer)[c(1:32,1998:2005)];noms
+dftraminer <- dftraminer[,c(1:32,1998:2005,33:1997)]
+# Reordenar les columnes de dftraminer
+```
+
+# Guardar resultat
+
+```{r}
+pathfile <-"C:/Users/lmontero/Dropbox/MEU_PROJECTINLAB/DADES/SUSTAINABILITY/APLICACIO-FRAGMENTATION/1.2 - PREPARATION/"
+# save(list=c("corresp","dfimp","dfpred","dfmo","dfmt","dfnom3OD","dfnomw","dfvalid","dfnom3taz","dfvalidtaz"), file = paste0(pathfile,"DataSources_v3.RData"))
+
+save(list=c("dfmo","dfmt","dfmad","dfmadchain","dfmadlast","dftraminer","dftraminer.seq"), file = paste0(pathfile,"1819EMEF_v3.RData"))
+```
