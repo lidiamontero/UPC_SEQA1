@@ -1,0 +1,627 @@
+---
+title: "Evolució 2018 a 2024"
+author: "inLab-CARNET-UPC"
+date: \today
+output:
+  xaringan::moon_reader:
+    yolo: true
+    nature:
+      autoplay: 30000
+  word_document:
+    toc: no
+    toc_depth: '4'
+  html_document:
+    toc: no
+    toc_depth: '4'
+  pdf_document:
+    latex_engine: pdflatex
+    number_sections: yes
+    toc_depth: 4
+    toc: yes
+  geometry: left=1.5cm,right=1.5cm,top=1.0cm,bottom=1.0cm
+fontsize: 10pt
+subtitle: 'Summaries EMEF21-23 Clustering'
+classoption: a4paper
+editor_options: 
+  chunk_output_type: console
+---
+```{r, include=FALSE, echo=FALSE}
+# Load Required Packages: to be increased over the course
+options(contrasts=c("contr.treatment","contr.treatment"))
+requiredPackages <- c("TraMineR","runner","lubridate","hms","missMDA","effects","FactoMineR","car","factoextra","RColorBrewer","ggplot2","dplyr","ggmap","ggthemes","knitr","chemometrics","rpart","ROCR","corrr","RColorBrewer","ggplot2","corrplot","plotly","reshape2","scales","stargazer","kableExtra","AER","MASS","lattice","stringr","xaringan","ggradar","tidyr","readxl","Hmisc","dplyr","sf","readr","janitor","tmap","viridis","TraMineRextras")
+
+#use this function to check if each package is on the local machine
+#if a package is installed, it will be loaded
+#if any are not, the missing package(s) will be installed and loaded
+package.check <- lapply(requiredPackages, FUN = function(x) {
+  if (!require(x, character.only = TRUE)) {
+    install.packages(x, dependencies = TRUE)
+    library(x, character.only = TRUE)
+  }
+})
+#verify they are loaded
+search()
+
+```
+
+# Carregar dades completes 
+
+```{r}
+# Clear plots
+if(!is.null(dev.list())) dev.off()
+# Clean workspace
+rm(list=ls())
+
+load("ITS_files18to24.RData")
+```
+
+# Determine multivariant outliers
+
+```{r}
+vars_num <- c("entropy","turbulence","complexity","ttr");vars_num
+
+res.mout <- Moutlier(dftraminer.data[,vars_num],0.99995)
+ll_mout <- which((res.mout$md>8));length(ll_mout)
+#ll_mout <- which((res.mout$md>res.mout$cutoff)&(res.mout$rd>res.mout$cutoff));length(ll_mout)
+plot(res.mout$md, res.mout$rd)
+abline(h=res.mout$cutoff, col="red")
+abline(v=res.mout$cutoff, col="red")
+
+# sense_mout<-row.names(subdftraminer.data[-ll_mout,])
+# sense_mout <- which( row.names(dftraminer.data) %in% row.names(subdftraminer.data[-ll_mout,]) );length(sense_mout)
+els_mout <- which( row.names(dftraminer.data) %in% names(ll_mout) );length(els_mout)
+sense_mout <- row.names(dftraminer.data[-els_mout,]);length(sense_mout)
+
+llsense_mout <- which(rownames(dftraminer.data) %in% sense_mout);length(llsense_mout)
+
+ll <- which( (dftraminer.data$order > 0) & rownames(dftraminer.data) %in% sense_mout)
+
+par(mfrow=c(2,2))
+hist(dftraminer.data$entropy[ll],col="red",main="Entropy",xlab="Entropy-No MVOut")
+hist(dftraminer.data$turbulence[ll],col="orange",main="Turbulence",xlab="Turbulence-No MVOut")
+hist(dftraminer.data$complexity[ll],col="turquoise",main="Complexity",xlab="Complexity-No MVOut")
+hist(dftraminer.data$ttr[ll],col="blue",main="ttr",xlab="TTR-No MVOut")
+par(mfrow=c(1,1))
+summary(dftraminer.data[ll,vars_num])
+
+cor(dftraminer.data[ll,c("entropy","turbulence","complexity","ttr")], method="spearman")
+dftraminer.data$year <- factor(dftraminer.data$year)
+datamelt <- melt(dftraminer.data[ll,c("entropy","turbulence","complexity","ttr","year")], id = "year") 
+ggplot( datamelt, aes(x = variable, y = value, color = year)) +  # ggplot function
+  geom_boxplot() +
+    facet_wrap(~variable, ncol=4,scale="free") + scale_color_brewer(palette="Spectral") +
+    theme(strip.text.x = element_text(size=12, face="bold"),
+          strip.background = element_rect(colour="black", fill="white"))
+
+ggplot( datamelt, aes( x = value, fill=variable, col=variable )) +  # ggplot function
+  scale_color_brewer(palette="Spectral") +
+  scale_fill_manual(values=c("red","orange","lightgreen","blue","yellow"))+
+  geom_histogram(bins = 15,col="white") +
+    facet_wrap(~variable, ncol=4,scales="free_x") +  
+    theme(strip.text.x = element_text(size=12, face="bold"),legend.position="none",
+          strip.background = element_rect(colour="black", fill="white"))
+
+length(ll)
+table(dftraminer.data[ll,"cluster"], useNA="always")  # 63361 mostres en total que viatgen i no són outliers
+```
+
+Counts of units per year: sample and population
+
+```{r}
+names(dftraminer.data)
+which(names(dftraminer.data)=="pesaix")
+ll21 <- which( (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2021")))
+ll22<- which( (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2022")))
+ll23<- which( (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2023")))
+ll24<- which( (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2024")))
+ll21.0<- which( (dftraminer.data$order == 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2021")))
+ll22.0<- which( (dftraminer.data$order == 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2022")))
+ll23.0<- which( (dftraminer.data$order == 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2023")))
+ll24.0<- which( (dftraminer.data$order == 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2024")))
+length(ll21)
+length(ll22)
+length(ll23)
+length(ll24)
+
+length(ll21.0)
+length(ll22.0)
+length(ll23.0)
+length(ll24.0)
+
+sum(dftraminer.data$pesaix[ll21])
+sum(dftraminer.data$pesaix[ll22])
+sum(dftraminer.data$pesaix[ll23])
+sum(dftraminer.data$pesaix[ll24])
+sum(dftraminer.data$pesaix[ll21.0])
+sum(dftraminer.data$pesaix[ll22.0])
+sum(dftraminer.data$pesaix[ll23.0])
+sum(dftraminer.data$pesaix[ll24.0])
+
+```
+
+
+```{r}
+ll <- which( (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2021","2022","2023","2024")))
+
+ll0 <- which( (dftraminer.data$order == 0) &  (dftraminer.data$year %in% c("2021","2022","2023","2024")))
+
+subdftraminer <- dftraminer.data[c(ll,ll0), ]
+subdftraminer.seq <- dftraminer.seq[c(ll,ll0),360:1440]
+attr(dftraminer.seq, "cpal") <- colorRampPalette(brewer.pal(11, "Spectral"))(12) #Generar paleta colors
+```
+
+Carga de impedancias y valores socioeconòmicos y usos del suelo
+
+```{r}
+
+load("C:/Users/lidia/Dropbox/MEU_PROJECTINLAB/DADES/SUSTAINABILITY/APLICACIO-FRAGMENTATION/1.8-ITS2018-21/Sources/dfimp.RData")
+load("C:/Users/lidia/Dropbox/MEU_PROJECTINLAB/DADES/SUSTAINABILITY/APLICACIO-FRAGMENTATION/1.8-ITS2018-21/Sources/combinaEMO.RData")
+
+corresp = read_xlsx("C:/Users/lidia/Dropbox/MEU_PROJECTINLAB/DADES/SUSTAINABILITY/APLICACIO-FRAGMENTATION/1.8-ITS2018-21/Sources/ZonesEMO_MacroZones_v2.xlsx") %>% data.frame()
+
+# Subconjunts de codis EMO per ambits
+zones_cbd1 <- sort(filter(corresp, taz.emef %in% c("8019-1"))$codi_emo   )    
+zones_cbd2 <- sort(filter(corresp, taz.emef %in% c("8019-2"))$codi_emo   )    
+   
+# 198 zones a BCN
+```
+
+
+
+```{r}
+names(dfmlo)
+dfmaup <- dfmlo[,c(1,66,112:118)]
+names(dfmaup)
+dfmaup$densitypop <- dfmlo$po_pob_total/(dfmlo$area* 0.000001) # Inhabitants per km2
+
+summary(dfmaup)
+dfaux<-dfmlo[,c("s_comercial","s_cultural" ,"s_edificis_publics","s_educacio" , "s_industria", "s_magatzem" , "s_oci_i_hostaleria","s_oficines","s_esportiu","s_sanitari" )]
+dfmaup$densityjob <-rowSums(dfaux)/(dfmlo$area* 0.000001)
+
+names(dfmlo)[c(49:65)]
+dfaux<-dfmlo[,c(49:65)]
+dfaux$total_s<-rowSums(dfaux)
+#dfmaup <- cbind( dfmaup, dfaux)
+dfmaup$per_dwelling <- 100*dfaux$s_residencial/dfaux$total_s
+dfmaup$s_resisum <- dfaux$s_residencial
+dfmaup$s_totalsum <- dfaux$total_s
+
+names(dfmlo)[c(102:110)]
+dfaux<-dfmlo[,c(102:110)]
+dfaux$total_s<-rowSums(dfaux)
+#dfmaup <- cbind( dfmaup, dfaux)
+dfmaup$pubtrans <- 1000*dfaux$total_s/dfmaup$po_pob_total
+dfmaup$s_pubsum <- dfaux$total_s
+#dfmaup <- cbind( dfmaup, dfaux)
+names(dfmaup)
+```
+
+
+```{r}
+dfaux <- dfimp %>% filter((ttc.TPr<280)&(From!=To)) %>% group_by(From) %>% 
+        dplyr::summarize( dis.TPr = mean(dis.TPr, na.rm=T),
+                          did.TPr = mean(did.TPr, na.rm=T),
+                          act.TPu = mean(act.TPu, na.rm=T),
+                          jrt.TPu = mean(jrt.TPu, na.rm=T),
+                          ttc.TPr = mean(ttc.TPr, na.rm=T),
+                          wtt = mean(wtt, na.rm = T )) %>% data.frame()
+names(dfaux)
+dfmaup$accesstpu <- dfaux$act.TPu
+dfmaup$wttmedian <- dfaux$wtt
+dfmaup$ttPu <- dfaux$jrt.TPu
+dfmaup$ttPr <- dfaux$ttc.TPr
+dfmaup$did <- dfaux$did.TPr
+dfmaup$dis <- dfaux$ttc.TPr
+
+
+# V9 Places escolars
+dfaux <- dfmlo[, c("e_places_ei", "e_places_ep", "e_places_eip", "e_places_epp", "e_places_eb","e_places_ebp")]
+summary(dfaux)
+#imputation method
+dfaux[is.na(dfaux)] <- 0
+# calculation of scholar places 
+dfmaup$school_places <-rowSums(dfaux)
+#dfmaup <- cbind( dfmaup, dfaux)
+# V9 Serveis ser_comm, ser_education ser_horeca and ser_health
+dfmaup$ser_comm <- dfmlo$s_comercial
+dfmaup$ser_educ <-dfmlo$s_educacio
+dfmaup$ser_horeca <- (dfmlo$s_oci_i_hostaleria + dfmlo$s_cultural + dfmlo$s_esportiu)
+dfmaup$ser_health <- dfmlo$s_sanitari
+#v10 average rent 
+names(dfmlo)
+dfmaup$av_rent <- dfmlo$r_rm_pond_pob
+weighted.mean(dfmaup$av_rent, dfmlo$e_pob_total)
+
+dfmaup[is.na(dfmaup)] <-0
+# Lambda estimation
+names(dfimp)
+summary(dfimp[,c("dis.TPr","did.TPr")])
+lambda<-sum(dfimp$dis.TPr)/sum(dfimp$did.TPr);lambda
+summary(dfmaup)
+names(dfmaup)
+```
+
+Agregació a nivel TAZ-EMEF
+
+```{r}
+names(dfmaup)
+summary(dfmaup)
+
+mean.ponderada <- function(x, w) {
+   sw <- sum(w, na.rm=T) 
+   mw <- 0
+   if (sw > 0) {
+     mw <- sum(x*w, na.rm=T)/sw
+     }
+   print( mw )
+}
+std.ponderada <- function(x, w) {
+   sw <- sum(w, na.rm=T) 
+   mw <- 0
+   if (sw > 0) {
+     mw <- sum(x*w, na.rm=T)/sw
+     varw <- (sum(((x-mw)^2)*w, na.rm=T)/sw)
+     }
+   print( sqrt(varw) )
+}
+
+dfemaup <- dfmaup %>% group_by(taz.emef) %>% 
+  dplyr::summarize(area = sum( area, na.rm=T ),
+            densitypopm = mean.ponderada(densitypop,area),
+            densitypopv = std.ponderada(densitypop,area),
+            densityjobm = mean.ponderada(densityjob,area),
+            densityjobv = std.ponderada(densityjob,area),
+            
+            per_dwelling = mean.ponderada(per_dwelling, s_totalsum ),
+            s_resisum = sum( s_resisum, na.rm=T ),
+            s_totalsum = sum( s_totalsum, na.rm = T),
+            
+            access2tpu= mean.ponderada(accesstpu, po_pob_total ),
+            wtt= mean.ponderada( wttmedian, po_pob_total ),
+            wttPu = mean.ponderada( ttPu, po_pob_total ),
+            wttPr = mean.ponderada( ttPr, po_pob_total ),
+            # ttD1.2= mean.ponderada( ttD1.2, po_pob_total),
+            # ttPuD1.2= mean.ponderada( ttPuD1.2, po_pob_total),
+            # ttPrD1.2= mean.ponderada( ttPrD1.2, po_pob_total),
+            
+            # typeblock= 100*sum( typeblock,na.rm=T)/sum(t_res_m2, na.rm=T),
+            # typeeix= 100*sum(typeeix ,na.rm=T)/sum(t_res_m2, na.rm=T),
+            # typeold= 100*sum(typeold ,na.rm=T)/sum(t_res_m2, na.rm=T),
+            # typeaishh= 100*sum(typeaishh ,na.rm=T)/sum(t_res_m2, na.rm=T),
+            
+            school_places =sum(school_places ,na.rm=T), 
+            av_rent =mean.ponderada(av_rent,po_pob_total ), 
+            ser_comm =sum(ser_comm ,na.rm=T), 
+            ser_educ =sum(ser_educ ,na.rm=T), 
+            ser_horeca = sum( ser_horeca, na.rm=T),
+            ser_health =sum(ser_health ,na.rm=T), 
+            
+            pubtrans = mean.ponderada(pubtrans,po_pob_total),
+            s_pubsum = sum(s_pubsum ,na.rm=T)
+            # ,
+            # ptrain = sum(ptren ,na.rm=T),
+            # ptram = sum(ptram ,na.rm=T)
+            
+            ) %>% data.frame()
+```
+
+Agregació dels indicadors de fragmentació
+
+```{r}
+names(dftraminer.data)[117] <- "com.res"
+names(dftraminer.data)
+table(dftraminer.data$com.res,dftraminer.data$cor.res,useNA="always")
+
+llfrag <-c("entropy","turbulence","complexity","ttr","taz.emef.res","pesaix","cor.res","com.res")
+# 
+
+```
+
+
+```{r}
+ll <- which(is.na(dfemaup$pesaix))
+dfemaup[ll,]
+hist(dfemaup$s_pubsum,15)
+quantile(dfemaup$s_pubsum,probs=seq(0,1,1/100))
+dfemaup$f.pubtrans <- factor( cut(dfemaup$s_pubsum, breaks=c(0,0.99,2,10,100,1000),include.lowest = T),labels=c("None","Low","Med","Good","Super"))
+summary(dfemaup)
+```
+
+Pintar les zones EMEF segons servei de transport públic
+
+```{r}
+## Regions defined for each Polygons
+names(dfemaup)
+library(sf)
+library(readr)
+library(janitor)
+library(tmap)
+shp<-st_read("Sources/ZonesEMO_MacroZones.shp")
+shp.emef <- st_read("Sources/ZonesEMEF.shp")
+shp.cor <- st_read("Sources/ZonesCOR.shp")
+shp<-st_read("Sources/ZonesEMO_MacroZones.shp")
+corresp = read_xlsx("Sources/ZonesEMO_MacroZones_v2.xlsx") %>% data.frame()
+corresp <- left_join( corresp, dfemaup[,c(1,22)], by="taz.emef")  %>% data.frame()
+corresp$cor_nom <- factor(corresp$cor_nom, levels=c("BCN","ETM","AMB","RMB"))
+names(corresp)
+shp <- left_join(shp, corresp[,c(8,18,22)],by="codi_emo") 
+
+table(corresp$f.pubtrans,useNA="always")
+sum(table(corresp$f.pubtrans,useNA="always"))
+names(corresp)
+summary(corresp[,c(8,18,22)])
+# corresp$cluster <- factor(corresp$cluster)
+# shp <- left_join(shp, corresp[,c(8,18,22)],by="codi_emo") %>% filter( !is.na(cluster))
+#ll <- which(is.na(shp$cluster))
+png(file="PubService.png",width=600, height=350)
+tmap_mode("plot")
+tm_shape(shp) + 
+  tm_fill("f.pubtrans", title = "Service", legend.show = T) +
+  tm_borders(alpha = 0.1) +
+  tm_layout(aes.palette = list(seq = "Spectral")) +
+  tm_legend(outside = F, outside.position = c("right","bottom"), stack = "vertical",legend.just=0,
+          main.title = "Public Transport Service",
+          main.title.position = "right", legend.title.size = 1,main.title.size = 1  ) +
+  tm_shape( shp.emef ) + tm_borders( alpha = 0.75) +
+  tm_shape( shp.cor ) + tm_borders( alpha = 1, col="black",lwd=2) +
+  tm_compass(north = 0,type = "8star", position = c("left", "top"),size=1, color.dark="black") 
+# +   tm_scale_bar(breaks = c(0,5, 10), text.size = 1.5, position = c("right", "bottom"), color.dark="darkblue",text.color="darkblue")
+dev.off()
+```
+
+Pintar les zones EMEF segons densitat de població
+
+```{r}
+## Regions defined for each Polygons
+names(dfemaup)
+shp.emef <- st_read("Sources/ZonesEMEF.shp")
+shp.cor <- st_read("Sources/ZonesCOR.shp")
+shp<-st_read("Sources/ZonesEMO_MacroZones.shp")
+corresp = read_xlsx("Sources/ZonesEMO_MacroZones_v2.xlsx") %>% data.frame()
+corresp <- left_join( corresp, dfemaup[,c(1,3)], by="taz.emef")  %>% data.frame()
+corresp$cor_nom <- factor(corresp$cor_nom, levels=c("BCN","ETM","AMB","RMB"))
+names(corresp)
+quantile(corresp$densitypopm,probs=seq(0,1,1/5))
+corresp$densitypopm <- factor(cut(corresp$densitypopm,breaks=quantile(corresp$densitypopm,probs=seq(0,1,1/5)),include.lowest = T), labels=c("VLow","Low","Med","Good","Over"))
+table(corresp$densitypopm,useNA="always")
+shp <- left_join(shp, corresp[,c(8,18,22)],by="codi_emo") 
+
+names(corresp)
+summary(corresp[,c(8,18,22)])
+
+png(file="PopDensity.png",width=600, height=350)
+tmap_mode("plot")
+tm_shape(shp) + 
+  tm_fill("densitypopm", title = "Density", legend.show = T) +
+  tm_borders(alpha = 0.1) +
+  tm_layout(aes.palette = list("Oranges"), legend.width=1) +
+  tm_legend(outside = TRUE, outside.position = "left", stack = "vertical",legend.just=0,
+          main.title = "Population Density",
+          main.title.position = "right", legend.title.size = 1,main.title.size = 1  ) +
+  tm_shape( shp.emef ) + tm_borders( alpha = 0.75) +
+  tm_shape( shp.cor ) + tm_borders( alpha = 1, col="black",lwd=2) +
+  tm_compass(north = 0,type = "8star", position = c("left", "top"),size=1, color.dark="black") 
+
+dev.off()
+```
+
+
+Pintar renda per càpita familiar i nb parades 
+
+```{r}
+## Regions defined for each Polygons
+names(dfemaup)
+shp.emef <- st_read("Sources/ZonesEMEF.shp")
+shp.cor <- st_read("Sources/ZonesCOR.shp")
+shp<-st_read("Sources/ZonesEMO_MacroZones.shp")
+corresp = read_xlsx("Sources/ZonesEMO_MacroZones_v2.xlsx") %>% data.frame()
+corresp <- left_join( corresp, dfemaup[,c(1,10,15)], by="taz.emef")  %>% data.frame()
+corresp$cor_nom <- factor(corresp$cor_nom, levels=c("BCN","ETM","AMB","RMB"))
+names(corresp)
+
+shp <- left_join(shp, corresp[,c(8,18,22,23)],by="codi_emo") 
+
+names(corresp)
+summary(corresp[,c(8,18,22,23)])
+
+png(file="Acc2TPU&PCRent.png",width=650, height=350)
+
+tmap_mode("plot")
+tm_shape(shp) + 
+  tm_polygons(c("access2tpu","av_rent"),n=8,  border.alpha=0.01,textNA="Not I", colorNA="white",border.col = "black",
+              title=paste0("Var.",c("Acc2TPu","PCRent")), 
+              style="kmeans", 
+          palette=list("Blues", "Reds")) +
+  tm_facets( ncol=2 )+
+  tm_shape( shp.emef ) + tm_borders( alpha = 0.5) +
+  tm_shape( shp.cor ) + tm_borders( alpha = 1, col="black",lwd=3)
+
+dev.off()
+```
+
+EDA Fragmentation indicators
+
+```{r}
+ll <- which( (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2021","2022","2023","2024")))
+vars_num <- c("entropy","turbulence","complexity","ttr")
+vars_num
+vars_num <- c("entropy","turbulence","complexity","ttr");vars_num
+# quantile(dftraminer.data$under.16[!is.na(dftraminer.data$under.16)],na.rm=T, seq(0,1,0.1))
+# summary(dftraminer.data$under.16)
+# dftraminer.data$f.under.16 <- factor(cut(dftraminer.data$under.16, breaks=c(0,0.1,1,2,10),include.lowest = T), labels=c("0","1","2","3+"))
+summary(dftraminer.data$under.16)
+names(dftraminer.data)
+summary(dftraminer.data[ll,c(vars_num,"year","gender","under.16","education")] )
+data_long <- dftraminer.data[ll,c(vars_num,"year","gender","under.16","education")] %>%
+  pivot_longer(vars_num, names_to = "KPI", values_to = "value") %>%
+  group_by(year, gender, under.16, KPI) %>%
+  dplyr::summarize(value = mean(value,na.rm=T), .groups = "drop") 
+
+ggplot(data_long, aes(KPI, value)) +
+  geom_col() +
+  facet_grid( under.16~ gender)
+
+resum <- dftraminer.data[ll,c(vars_num,"year")] %>%
+  #pivot_longer(vars_num, names_to = "KPI", values_to = "value") %>%
+  group_by(year) %>%
+  dplyr::summarize(entropy = mean(entropy,na.rm=T),turbulence = mean(turbulence,na.rm=T),complexity = mean(complexity,na.rm=T),ttr = mean(ttr,na.rm=T), .groups = "drop") %>% data.frame()
+resum
+
+resum <- dftraminer.data[ll,c(vars_num,"year")] %>%
+  #pivot_longer(vars_num, names_to = "KPI", values_to = "value") %>%
+  group_by(year) %>%
+  dplyr::summarize(entropy = sd(entropy,na.rm=T),turbulence = sd(turbulence,na.rm=T),complexity = sd(complexity,na.rm=T),ttr = sd(ttr,na.rm=T), .groups = "drop") %>% data.frame()
+resum
+
+
+resum <- dftraminer.data[ll,c(vars_num,"year","gender","under.16")] %>%
+  #pivot_longer(vars_num, names_to = "KPI", values_to = "value") %>%
+  group_by(year, gender, under.16) %>%
+  dplyr::summarize(entropy = mean(entropy,na.rm=T),turbulence = mean(turbulence,na.rm=T),complexity = mean(complexity,na.rm=T),ttr = mean(ttr,na.rm=T), .groups = "drop") %>% data.frame()
+resum
+
+tt<-cor(dftraminer.data[ll,c("entropy","turbulence","complexity","ttr")], method="spearman");tt
+
+library(reshape2)
+melted_cormat <- melt(tt)
+head(melted_cormat)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()
+corrplot(tt, , method="pie")
+corrplot.mixed(tt, lower = "number", upper = "ellipse")
+```
+         
+          
+          
+```{r}
+ll <- which( (dftraminer.data$order > 0) & rownames(dftraminer) %in% sense_mout)
+
+par(mfrow=c(2,2))
+hist(dftraminer.data$entropy[ll],col="red",main="Entropy",xlab="Entropy-No MVOut")
+hist(dftraminer.data$turbulence[ll],col="orange",main="Turbulence",xlab="Turbulence-No MVOut")
+hist(dftraminer.data$complexity[ll],col="turquoise",main="Complexity",xlab="Complexity-No MVOut")
+hist(dftraminer.data$ttr[ll],col="blue",main="ttr",xlab="TTR-No MVOut")
+par(mfrow=c(1,1))
+summary(dftraminer.data[ll,vars_num])
+
+cor(dftraminer.data[ll,c("entropy","turbulence","complexity","ttr")], method="spearman")
+dftraminer.data$year <- factor(dftraminer.data$year)
+datamelt <- melt(dftraminer.data[ll,c("entropy","turbulence","complexity","ttr","year")], id = "year") 
+ggplot( datamelt, aes(x = variable, y = value, color = year)) +  # ggplot function
+  geom_boxplot() +
+    facet_wrap(~variable, ncol=4,scale="free") + scale_color_brewer(palette="Spectral") +
+    theme(strip.text.x = element_text(size=12, face="bold"),
+          strip.background = element_rect(colour="black", fill="white"))
+
+ggplot( datamelt, aes( x = value, fill=variable, col=variable )) +  # ggplot function
+  scale_color_brewer(palette="Spectral") +
+  scale_fill_manual(values=c("red","orange","lightgreen","blue","yellow"))+
+  geom_histogram(bins = 15,col="white") +
+    facet_wrap(~variable, ncol=4,scales="free_x") +  
+    theme(strip.text.x = element_text(size=12, face="bold"),legend.position="none",
+          strip.background = element_rect(colour="black", fill="white"))
+
+length(ll)
+ll <- which( (dftraminer.data$order > 0) & rownames(dftraminer) %in% sense_mout)
+table(dftraminer.data$year[ll],useNA="always")
+# plot(turbulence~gender)
+# kruskal.test(turbulence~gender)
+# aov(lm(turbulence~gender))
+library(MASS)
+dftraminer.data$year <- factor(dftraminer.data$year)
+boxcox(turbulence~gender*age.segment+handicap+year+birth.region+telework+education, data=dftraminer.data[ll,])
+
+summary(dftraminer.data[ll,c("gender","age.segment","handicap","year","birth.region","telework","education")])
+m1<-lm(log(turbulence)~gender*age.segment+year+birth.region+telework+education, data=dftraminer.data[ll,])
+summary(m1)
+Anova(m1)
+plot(allEffects(m1))
+
+par(mfrow=c(2,2))
+plot(m1,id.n=0)
+par(mfrow=c(1,1))
+
+m1<-lm(log(turbulence)~age.segment*year*gender+birth.region+telework+education, data=dftraminer.data[ll,])
+summary(m1)
+plot(effect('age.segment*year*gender',mod=m1),axes=list(y=list(transform=exp, lab="turbulence")))
+e1.mm1 <- predictorEffects(m1, ~age.segment)
+plot(e1.mm1, lines=list(multiline=TRUE), confint=list(style="auto"),lattice=list(layout=c(7, 1)),axes=list(y=list(transform=exp, lab="Turbulence")), colors=c("green","purple"))
+
+m1<-lm(log(turbulence)~age.segment*gender*year+birth.region+telework+education+under.16, data=dftraminer.data[ll,])
+summary(m1)
+plot(allEffects(m1),axes=list(y=list(transform=exp, lab="turbulence")))
+
+e1.mm1 <- predictorEffect("age.segment", m1)
+g1t<-plot(e1.mm1, lines=list(multiline=TRUE), colors=c("green","purple"), confint=list(style="auto"),axes=list(y=list(transform=exp, lab="Turbulence"), x=list(cex=0.75,rotate=25)),lattice=list(layout=c(7, 1)),grid=T,key.args = list(space="top", columns=2, border=FALSE, fontfamily="sans", cex.title=.80, cex=0.75))
+plot(g1t)
+
+m1<-lm(log(turbulence)~education*gender*year+age.segment+year+under.16+birth.region+telework+education, data=dftraminer.data[ll,])
+summary(m1)
+
+
+e1.mm1 <- predictorEffect("education", m1)
+g1t<-plot(e1.mm1, lines=list(multiline=TRUE), colors=c("green","purple"), confint=list(style="auto"),axes=list(y=list(transform=exp, lab="Turbulence"), x=list(cex=0.75,rotate=25)),lattice=list(layout=c(7, 1)),grid=T,key.args = list(space="top", columns=2, border=FALSE, fontfamily="sans", cex.title=.80, cex=0.75))
+plot(g1t)
+
+m1<-lm(complexity~age.segment*gender*year+year+birth.region+telework*under.16+education, data=dftraminer.data[ll,])
+summary(m1)
+
+e1.mm1 <- predictorEffect("age.segment", m1)
+g1t<-plot(e1.mm1, lines=list(multiline=TRUE), colors=c("green","purple"), confint=list(style="auto"),axes=list(y=list(lab="Complexity"), x=list(cex=0.75,rotate=25)),lattice=list(layout=c(7, 1)),grid=T,key.args = list(space="top", columns=2, border=FALSE, fontfamily="sans", cex.title=.80, cex=0.75))
+plot(g1t)
+
+m1<-lm(complexity~education*gender*year+age.segment+year+birth.region+telework*under.16+education, data=dftraminer.data[ll,])
+summary(m1)
+
+e1.mm1 <- predictorEffect("education", m1)
+g1t<-plot(e1.mm1, lines=list(multiline=TRUE), colors=c("green","purple"), confint=list(style="auto"),axes=list(y=list(lab="Complexity"), x=list(cex=0.75,rotate=25)),lattice=list(layout=c(7, 1)),grid=T,key.args = list(space="top", columns=2, border=FALSE, fontfamily="sans", cex.title=.80, cex=0.75))
+plot(g1t)
+
+m1<-lm(log(n.trips)~age.segment*gender*year+year+birth.region+telework*under.16+education, data=dftraminer.data[ll,])
+summary(m1)
+
+e1.mm1 <- predictorEffect("age.segment", m1)
+g1t<-plot(e1.mm1, lines=list(multiline=TRUE), colors=c("green","purple"), confint=list(style="auto"),axes=list(y=list(lab="Nb of Trips"), x=list(cex=0.75,rotate=25)),lattice=list(layout=c(7, 1)),grid=T,key.args = list(space="top", columns=2, border=FALSE, fontfamily="sans", cex.title=.80, cex=0.75))
+plot(g1t)
+
+m1<-lm(log(n.trips)~education*gender*year+age.segment+year+birth.region+telework*under.16+education, data=dftraminer.data[ll,])
+summary(m1)
+
+e1.mm1 <- predictorEffect("education", m1)
+g1t<-plot(e1.mm1, lines=list(multiline=TRUE), colors=c("green","purple"), confint=list(style="auto"),axes=list(y=list(lab="Number of Trips"), x=list(cex=0.75,rotate=25)),lattice=list(layout=c(6, 1)),grid=T,key.args = list(space="top", columns=2, border=FALSE, fontfamily="sans", cex.title=.80, cex=0.75))
+plot(g1t)
+
+m1<-lm(log(n.trips)~under.16*cor.res*gender+age.segment+year+birth.region+telework*under.16+education, data=dftraminer.data[ll,])
+summary(m1)
+
+e1.mm1 <- predictorEffect("cor.res", m1)
+g1t<-plot(e1.mm1, lines=list(multiline=TRUE), colors=c("green","purple"), confint=list(style="auto"),axes=list(y=list(transform=exp,lab="Number of Trips"), x=list(cex=0.75,rotate=25)),lattice=list(layout=c(2, 1)),grid=T,key.args = list(space="top", columns=2, border=FALSE, fontfamily="sans", cex.title=.80, cex=0.75))
+plot(g1t)
+
+plot(effect('under.16*cor.res*gender',mod=m1),axes=list(y=list(transform=exp, lab="Nb.Trips")))
+
+aov.noCov<-aov( n.trips ~cor.res+ year+gender+education+age.segment+under.16, data=dftraminer.data[ll,])
+mm <- lm(n.trips~cor.res+year, data=dftraminer.data)
+Anova(mm)
+tapply(dftraminer.data$n.trips[ll], dftraminer.data$cor.res[ll],summary)
+coeftest(mm, vcov = vcovHC(m1, type = "HC0"))
+coefci(mm, vcov = vcovHC)
+model.tables(aov(n.trips~cor.res, data=dftraminer.data),type="mean",se=T)
+
+library(lsmeans)
+lsmc1<-lsmeans(aov.noCov, ~ cor.res ) # get adjusted means controlling for covariate
+lsmc1
+
+library('emmeans')
+
+m = aov(log(n.trips)~cor.res+gender+age.segment+year+birth.region+telework*under.16+education, data=dftraminer.data[ll,])
+emmeans(m, spec = 'cor.res')
+```
+
+# Guardar resultat
+
+```{r}
+#
+save(list=c("desp1","desp","opi", "dftraminer","dftraminer.seq", "sense_mout"), file = "ITS_files18to24_v2.RData")
+```
+

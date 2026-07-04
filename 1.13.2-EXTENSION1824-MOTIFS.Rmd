@@ -1,0 +1,1543 @@
+---
+title: "Evolució 2018 a 2023"
+author: "inLab-CARNET-UPC"
+date: \today
+output:
+  xaringan::moon_reader:
+    yolo: true
+    nature:
+      autoplay: 30000
+  word_document:
+    toc: no
+    toc_depth: '4'
+  html_document:
+    toc: no
+    toc_depth: '4'
+  pdf_document:
+    latex_engine: pdflatex
+    number_sections: yes
+    toc_depth: 4
+    toc: yes
+  geometry: left=1.5cm,right=1.5cm,top=1.0cm,bottom=1.0cm
+fontsize: 10pt
+subtitle: 'Summaries EMEF21-23 Clustering'
+classoption: a4paper
+editor_options: 
+  chunk_output_type: console
+---
+```{r, include=FALSE, echo=FALSE}
+# Load Required Packages: to be increased over the course
+options(contrasts=c("contr.treatment","contr.treatment"))
+requiredPackages <- c("TraMineR","runner","lubridate","hms","missMDA","effects","FactoMineR","car","factoextra","RColorBrewer","ggplot2","dplyr","ggmap","ggthemes","knitr","chemometrics","rpart","ROCR","corrr","RColorBrewer","ggplot2","corrplot","plotly","reshape2","scales","stargazer","kableExtra","AER","MASS","lattice","stringr","xaringan","ggradar","tidyr","readxl","Hmisc","dplyr","sf","readr","janitor","tmap","viridis","TraMineRextras","forcats","ggiraphExtra","bnlearn","mlfit")
+
+#use this function to check if each package is on the local machine
+#if a package is installed, it will be loaded
+#if any are not, the missing package(s) will be installed and loaded
+package.check <- lapply(requiredPackages, FUN = function(x) {
+  if (!require(x, character.only = TRUE)) {
+    install.packages(x, dependencies = TRUE)
+    library(x, character.only = TRUE)
+  }
+})
+#verify they are loaded
+search()
+
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#   install.packages("BiocManager")
+# BiocManager::install()
+# BiocManager::install(c("graph", "Rgraphviz"))
+```
+
+# Carregar dades completes 
+
+```{r}
+# Clear plots
+if(!is.null(dev.list())) dev.off()
+# Clean workspace
+rm(list=ls())
+
+load("ITS_files18to23.RData")
+```
+
+# Determine multivariant outliers
+
+```{r}
+vars_num <- c("entropy","turbulence","complexity","ttr");vars_num
+
+res.mout <- Moutlier(dftraminer.data[,vars_num],0.99995)
+ll_mout <- which((res.mout$md>8));length(ll_mout)
+#ll_mout <- which((res.mout$md>res.mout$cutoff)&(res.mout$rd>res.mout$cutoff));length(ll_mout)
+plot(res.mout$md, res.mout$rd)
+abline(h=res.mout$cutoff, col="red")
+abline(v=res.mout$cutoff, col="red")
+
+# sense_mout<-row.names(subdftraminer.data[-ll_mout,])
+# sense_mout <- which( row.names(dftraminer.data) %in% row.names(subdftraminer.data[-ll_mout,]) );length(sense_mout)
+els_mout <- which( row.names(dftraminer.data) %in% names(ll_mout) );length(els_mout)
+sense_mout <- row.names(dftraminer.data[-els_mout,]);length(sense_mout)
+
+llsense_mout <- which(rownames(dftraminer.data) %in% sense_mout);length(llsense_mout)
+
+ll <- which( (dftraminer.data$order > 0) & rownames(dftraminer.data) %in% sense_mout)
+
+par(mfrow=c(2,2))
+hist(dftraminer.data$entropy[ll],col="red",main="Entropy",xlab="Entropy-No MVOut")
+hist(dftraminer.data$turbulence[ll],col="orange",main="Turbulence",xlab="Turbulence-No MVOut")
+hist(dftraminer.data$complexity[ll],col="turquoise",main="Complexity",xlab="Complexity-No MVOut")
+hist(dftraminer.data$ttr[ll],col="blue",main="ttr",xlab="TTR-No MVOut")
+par(mfrow=c(1,1))
+summary(dftraminer.data[ll,vars_num])
+
+cor(dftraminer.data[ll,c("entropy","turbulence","complexity","ttr")], method="spearman")
+dftraminer.data$year <- factor(dftraminer.data$year)
+datamelt <- melt(dftraminer.data[ll,c("entropy","turbulence","complexity","ttr","year")], id = "year") 
+ggplot( datamelt, aes(x = variable, y = value, color = year)) +  # ggplot function
+  geom_boxplot() +
+    facet_wrap(~variable, ncol=4,scale="free") + scale_color_brewer(palette="Spectral") +
+    theme(strip.text.x = element_text(size=12, face="bold"),
+          strip.background = element_rect(colour="black", fill="white"))
+
+ggplot( datamelt, aes( x = value, fill=variable, col=variable )) +  # ggplot function
+  scale_color_brewer(palette="Spectral") +
+  scale_fill_manual(values=c("red","orange","lightgreen","blue","yellow"))+
+  geom_histogram(bins = 15,col="white") +
+    facet_wrap(~variable, ncol=4,scales="free_x") +  
+    theme(strip.text.x = element_text(size=12, face="bold"),legend.position="none",
+          strip.background = element_rect(colour="black", fill="white"))
+
+length(ll)
+table(dftraminer.data[ll,"cluster"], useNA="always")  # 52900 mostres en total que viatgen i no són outliers
+```
+
+Counts of units per year: sample and population
+
+```{r}
+names(dftraminer.data)
+which(names(dftraminer.data)=="pesaix")
+ll21 <- which( (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2021")))
+ll22<- which( (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2022")))
+ll23<- which( (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2023")))
+ll21.0<- which( (dftraminer.data$order == 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2021")))
+ll22.0<- which( (dftraminer.data$order == 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2022")))
+ll23.0<- which( (dftraminer.data$order == 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2023")))
+length(ll21)
+length(ll22)
+length(ll23)
+
+length(ll21.0)
+length(ll22.0)
+length(ll23.0)
+
+sum(dftraminer.data$pesaix[ll21])
+sum(dftraminer.data$pesaix[ll22])
+sum(dftraminer.data$pesaix[ll23])
+sum(dftraminer.data$pesaix[ll21.0])
+sum(dftraminer.data$pesaix[ll22.0])
+sum(dftraminer.data$pesaix[ll23.0])
+
+```
+
+
+```{r}
+ll <- which( (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2018","2019","2022","2023")))
+
+ll0 <- which( (dftraminer.data$order == 0) &  (dftraminer.data$year %in% c("2023")))
+
+
+ll23BCN <- which( (dftraminer.data$cor.res=="BCN") & (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2023")))
+
+ll23mesBCN <- which( (dftraminer.data$cor.res=="BCN") & (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2023")))
+
+ll230BCN <- which((dftraminer.data$cor.res=="BCN") &  (dftraminer.data$order == 0) &  (dftraminer.data$year %in% c("2023")))
+
+mean(dftraminer.data$order[ll23BCN])
+sd(dftraminer.data$order[ll23BCN])
+sd(dftraminer.data$order[ll23BCN])/mean(dftraminer.data$order[ll23BCN])
+
+ll23ETM <- which( (dftraminer.data$cor.res %in% c("ETM","AMB")) & (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2023")))
+
+ll23mesETM <- which( (dftraminer.data$cor.res%in% c("ETM","AMB")) & (dftraminer.data$order > 0) &  (rownames(dftraminer.data) %in% sense_mout) & (dftraminer.data$year %in% c("2023")))
+
+ll230ETM <- which((dftraminer.data$cor.res%in% c("ETM","AMB")) &  (dftraminer.data$order == 0) &  (dftraminer.data$year %in% c("2023")))
+
+mean(dftraminer.data$order[ll23BCN])
+sd(dftraminer.data$order[ll23BCN])
+sd(dftraminer.data$order[ll23BCN])/mean(dftraminer.data$order[ll23BCN])
+
+mean(dftraminer.data$order[ll23ETM])
+sd(dftraminer.data$order[ll23ETM])
+sd(dftraminer.data$order[ll23ETM])/mean(dftraminer.data$order[ll23ETM])
+```
+
+
+```{r}
+names(dftraminer.data)
+tail(dftraminer.data$s.seq,20)  # Potser segons Ferran: str_remove_all(dftraminer.data$s.seq, "(^T[A-Z]-)|(-T[A-Z](?=-|$))")
+
+dftraminer.data$motif <- NA
+dftraminer.data$motif2 <- NA
+dftraminer.data$ntours <- 0
+dftraminer.data$nwdtours <- 0
+dftraminer.data$ntoursE<- 0
+dftraminer.data$ntoursS<- 0
+dftraminer.data$ntoursC<- 0
+dftraminer.data$ntoursO<- 0
+dftraminer.data$ntoursW<- 0
+dftraminer.data$startendHome <- 0
+dftraminer.data$startHome <- 0
+dftraminer.data$endHome <- 0
+
+for (i in 1:nrow(dftraminer.data)){
+varlist <- unlist(strsplit(dftraminer.data$s.seq[i], split="-"))
+tnew <- 1
+newvarlist <-""
+for (t in 1:length(varlist)) {
+      if ((nchar(varlist[ t ]) == 1)| (varlist[ t ]=="WH") ) {
+        newvarlist[ tnew ] <- ifelse(nchar(varlist[t]==1), varlist[t],"X")
+        tnew <- tnew + 1}
+}
+varstring <- do.call(paste, c(as.list(newvarlist), sep = ""))
+varstring <- str_replace_all(varstring, '([[OASWC]])\\1+', '\\1')
+varstring2 <-gsub("([A]\\H)\\1+", "\\1", varstring)
+varstring2 <-gsub("([S]\\H)\\1+", "\\1", varstring2)
+varstring2 <-gsub("([C]\\H)\\1+", "\\1", varstring2)
+varstring2 <-gsub("([O]\\H)\\1+", "\\1", varstring2)
+varstring2 <-gsub("([W]\\H)\\1+", "\\1", varstring2)
+
+newvarlistnodup <-unlist(strsplit(varstring, split=""))
+newvarlistnodup <-lapply(newvarlistnodup, function(x) replace(x, x=="X", "WH"))
+
+newvarlistnodup2 <-unlist(strsplit(varstring2, split=""))
+newvarlistnodup2 <-lapply(newvarlistnodup2, function(x) replace(x, x=="X", "WH"))
+
+dftraminer.data$ntoursE[ i ] <- sum(unlist(lapply(newvarlistnodup, function(x) ifelse(x=="A",1,0))))
+dftraminer.data$ntoursS[ i ] <- sum(unlist(lapply(newvarlistnodup, function(x) ifelse(x=="S",1,0))))
+dftraminer.data$ntoursC[ i ] <- sum(unlist(lapply(newvarlistnodup, function(x) ifelse(x=="C",1,0))))
+dftraminer.data$ntoursO[ i ] <- sum(unlist(lapply(newvarlistnodup, function(x) ifelse(x=="O",1,0))))
+dftraminer.data$ntoursW[ i ] <- sum(unlist(lapply(newvarlistnodup, function(x) ifelse(x=="W",1,0))))
+
+
+
+dftraminer.data$motif[ i ] <- do.call(paste, c(as.list(newvarlistnodup), sep = "-"))
+dftraminer.data$motif2[ i ] <- do.call(paste, c(as.list(newvarlistnodup2), sep = "-"))
+
+dftraminer.data$ntours[ i ] <- sum(unlist(lapply(newvarlistnodup, function(x) ifelse(x=="H",1,0))))-1
+dftraminer.data$startendHome[ i ] <- ifelse((newvarlistnodup[1]=="H")&(newvarlistnodup[length(newvarlistnodup)]=="H"),1,0)
+dftraminer.data$startHome[ i ] <- ifelse( newvarlistnodup[1]=="H",1,0)
+dftraminer.data$endHome[ i ] <- ifelse( newvarlistnodup[length(newvarlistnodup)]=="H",1,0)
+dftraminer.data$nwdtours[ i ] <- dftraminer.data$ntoursW[ i ] + dftraminer.data$ntoursS[ i ] + dftraminer.data$ntoursC[ i ] + dftraminer.data$ntoursO[ i ] + dftraminer.data$ntoursE[ i ]
+}
+names(dftraminer.data)
+head(dftraminer.data[,c(12,184:194)],20)
+```
+
+Definir activity.motif
+
+```{r}
+allmotifs <- sort(table(dftraminer.data$motif), decreasing=T)
+str(allmotifs)
+allmotifs
+allmotifs/58552
+allmotifs2 <- sort(table(dftraminer.data$motif2), decreasing=T)
+str(allmotifs2)
+allmotifs2/58552
+
+dftraminer.data$activity.motif <- factor(dftraminer.data$motif2)
+dftraminer.data$activity.motif <- fct_collapse(dftraminer.data$motif2,
+                     "H" = c("H"),
+                     "H-E-H"=c("H-A-H"),
+                     "H-S-H"=c("H-S-H"),
+                     "H-C-H"=c("H-C-H"),
+                     "H-O-H"=c("H-O-H","H-H-O-H"),
+                     "H-W-H"=c("H-W-H","H-W-H-H"),
+                     
+                     "H-W-H-O-H"=c("H-W-H-O-H","H-O-H-W-H","H-O-H-W-H-O-H","H-W-H-O-H-W-H"),
+                     "H-W-H-S-H"=c("H-W-H-S-H","H-S-H-W-H","H-W-H-S-H-W-H"),
+                     "H-W-H-E-H"=c("H-W-H-A-H","H-A-H-W-H","H-A-H-W-H-A-H","H-W-H-A-H-W-H"),
+                     "H-W-H-C-H"=c("H-W-H-C-H","H-C-H-W-H","H-C-H-W-H-C-H","H-W-H-C-H-W-H"),
+                     "H-C-H-O-H"=c("H-C-H-O-H","H-O-H-C-H","H-O-H-C-H-O-H","H-C-H-O-H-C-H"),
+                     "H-C-H-S-H"=c("H-C-H-S-H","H-S-H-C-H"),
+                     "H-C-H-E-H"=c("H-C-H-A-H","H-A-H-C-H","H-A-H-C-H-A-H","H-C-H-A-H-C-H"),
+                     "H-O-H-E-H"=c("H-A-H-O-H","H-O-H-A-H","H-A-H-O-H-A-H","H-O-H-A-H-O-H"),
+                     "H-O-H-S-H"=c("H-S-H-O-H","H-O-H-S-H","H-O-H-S-H-O-H","H-S-H-O-H-S-H"),
+                     
+                     "H-W-O-H"=c("H-W-O-H"),
+                     "H-W-S-H"=c("H-W-S-H"),
+                     "H-W-E-H"=c("H-W-A-H"),
+                     "H-W-C-H"=c("H-W-C-H"),
+                     "H-C-O-H"=c("H-C-O-H"),
+                     "H-C-S-H"=c("H-C-S-H"),
+                     "H-C-E-H"=c("H-C-A-H"),
+                     "H-O-S-H"=c("H-O-S-H"),
+                     "H-O-E-H"=c("H-O-A-H"), 
+                     
+                     "H-O-W-H"=c("H-O-W-H"),
+                     "H-S-W-H"=c("H-S-W-H"),
+                     "H-E-W-H"=c("H-A-W-H"),
+                     "H-C-W-H"=c("H-C-W-H"),
+                     "H-O-C-H"=c("H-O-C-H"),
+                     "H-S-C-H"=c("H-S-C-H"),
+                     "H-E-C-H"=c("H-A-C-H"),
+                     "H-E-O-H"=c("H-A-O-H"),
+                     "H-S-O-H"=c("H-S-O-H"),
+                     
+                     "H-W-O-W-H"=c("H-W-O-W-H"),
+                     "H-W-E-W-H"=c("H-W-A-W-H"),
+                     "H-W-C-W-H"=c("H-W-C-W-H"),
+                     "H-W-S-W-H"=c("H-W-S-W-H"),
+                     
+                     "H-W-H-E-H-O-H"=c("H-W-H-A-H-O-H"),
+                     "H-O-W-H-O-H"=c("H-O-W-H-O-H"),
+                     "H-W-H-W-O-H"=c("H-W-H-W-O-H"),
+                     "H-W-H-E-O-H"=c("H-W-H-A-O-H"),
+                     "H-E-O-H-E-H"=c("H-A-O-H-A-H"),
+                     "H-E-W-H-E-H"=c("H-A-W-H-A-H"),
+                     "H-W-O-W-H-O-H"=c("H-W-O-W-H-O-H"),
+                     "H-E-W-H-O-H" =c("H-A-W-H-O-H" ),
+                     "H-O-H-C-O-H"=c("H-O-H-C-O-H"),
+                     "H-W-H-C-H-O-H"=c("H-W-H-C-H-O-H"),
+                     other_level = "Other"
+                     )
+head(dftraminer.data$motif)
+head(dftraminer.data$motif2)
+head(dftraminer.data$activity.motif)
+
+
+```
+
+
+Definició act.motif.sub 
+
+```{r}
+dftraminer.data$act.motif.sub <- factor(dftraminer.data$activity.motif)
+str(dftraminer.data$activity.motif)
+sort(prop.table(table(dftraminer.data$activity.motif)),decreasing=T)
+
+# 
+#         Other         H-O-H         H-W-H     H-W-H-O-H             H     H-C-H-O-H 
+#  1.896304e-01  1.704025e-01  1.458023e-01  8.860727e-02  8.066423e-02  3.544805e-02 
+#         H-C-H         H-S-H     H-W-H-E-H     H-O-H-E-H     H-O-H-S-H       H-W-O-H 
+#  3.244049e-02  2.755642e-02  2.411187e-02  2.375199e-02  2.102720e-02  1.987044e-02 
+#         H-E-H     H-W-H-C-H       H-C-O-H     H-W-O-W-H       H-W-E-H       H-W-C-H 
+#  1.858516e-02  1.203023e-02  9.768135e-03  7.480335e-03  6.966223e-03  5.989409e-03 
+#       H-E-W-H     H-W-H-S-H H-W-H-E-H-O-H       H-E-O-H       H-O-W-H       H-O-C-H 
+#  5.835176e-03  5.166829e-03  4.755540e-03  4.627011e-03  4.549895e-03  4.395661e-03 
+
+dftraminer.data$act.motif.sub <- fct_collapse( dftraminer.data$act.motif.sub,
+                    "H"=c("H"),
+                    "H-E-H" = c("H-E-H"),
+                    "H-C-H" = c("H-C-H"),
+                    "H-O-H" = c("H-O-H"),
+                    "H-S-H" = c("H-S-H"),
+                    "H-W-H" = c("H-W-H"),
+                    "H-W-H-O-H" = c("H-W-H-O-H"),
+                    "H-C-H-O-H" = c("H-C-H-O-H"),
+                    "H-W-H-E-H" = c("H-W-H-E-H"), 
+                    "H-O-H-E-H" = c("H-O-H-E-H"),
+                    "H-O-H-S-H" = c("H-O-H-S-H"),
+                    "H-W-H-C-H" = c("H-W-H-C-H"),
+                    "H-W-O-H" = c("H-W-O-H"),
+                    "H-C-O-H" = c("H-C-O-H"),
+                    "H-W-O-W-H" = c("H-W-O-W-H"),
+                    other_level = c("Other")
+                  )
+
+prop.table( table(dftraminer.data$act.motif.sub))
+head(sort(prop.table( table(dftraminer.data$activity.motif)),decreasing=T),16)
+head(sort(prop.table( table(dftraminer.data$act.motif.sub)),decreasing=T),16)
+llmotifs <- names(head(sort(prop.table( table(dftraminer.data$act.motif.sub)), decreasing=T), 16))
+llmotifs
+llmotifs <- llmotifs[2:16]
+llmotifs
+dftraminer.data$act.motif.sub <- factor(dftraminer.data$act.motif.sub, levels=c("H",     "H-O-H" ,"H-W-H",      "H-C-H",  "H-S-H", "H-E-H", "H-W-H-O-H", "H-C-H-O-H",
+ "H-W-H-E-H", "H-O-H-E-H", "H-O-H-S-H", "H-W-O-H" ,"H-W-H-C-H",
+ "H-C-O-H" ,"H-W-O-W-H","Other"))
+levels(dftraminer.data$act.motif.sub)
+```
+
+
+```{r}
+subdftraminer <- dftraminer.data[c(ll,ll0), ]
+subdftraminer.seq <- dftraminer.seq[c(ll,ll0),360:1440]
+attr(dftraminer.seq, "cpal") <- colorRampPalette(brewer.pal(11, "Spectral"))(12) #Generar paleta colors
+```
+
+Valorar la definició de activity.motif
+
+```{r}
+head((subdftraminer$s.seq),20)
+head((subdftraminer$motif2),20)
+head((subdftraminer$motif),20)
+head(table(subdftraminer$motif2),20)
+tt <- table(subdftraminer$motif2);attributes(tt)
+length(names(tt)) # Nb Motif2 2178
+
+tt <- table(dftraminer.data$motif2);attributes(tt)
+length(names(tt)) # Nb Motif2 2632
+
+tt <- table(dftraminer.data$activity.motif);attributes(tt)
+length(names(tt)) # Activity motif 48
+
+head(sort(table(subdftraminer$motif2),decreasing=T),20)
+
+trunctt<- head(sort(table(subdftraminer$motif2),decreasing=T),50);trunctt
+sum(trunctt)/nrow(subdftraminer)
+llmotif50 <- names(trunctt);llmotif50
+
+trunctt<- head(sort(table(dftraminer.data$motif2),decreasing=T),50);trunctt
+sum(trunctt)/nrow(dftraminer.data)
+
+head(sort(100*round(prop.table(table(dftraminer.data$activity.motif)), digits=3),decreasing=T),50);
+trunctt<- head(sort(table(subdftraminer$activity.motif),decreasing=T),15);trunctt
+sum(trunctt)/nrow(subdftraminer)
+llmotif15 <- names(trunctt);llmotif15
+
+ttactmotif <- table(dftraminer.data$activity.motif);ttactmotif
+length(names(ttactmotif))
+
+ttmotif2 <- table(dftraminer.data$motif2);ttmotif2
+length(names(ttmotif2))
+
+ttactmotifs <- table(subdftraminer$activity.motif);ttactmotifs
+length(names(ttactmotifs))
+
+
+barplot(table(subdftraminer$ntours, useNA="ifany"),col=brewer.pal(8, "Spectral"), main="Number of daily tours (Home-based)")
+
+```
+
+
+Number of Tours 2018, 19, 22 & 23
+
+```{r}
+df<-as.data.frame(table(subdftraminer$ntours, useNA="ifany"));df;names(df)<-c("ntours","n")
+df$percentage <- round(df$n/sum(df$n),digits=4)
+ggplot(data=df, aes(x=ntours, y=n)) + ylim(0,13000) +
+geom_bar( stat="identity",fill="steelblue") +
+geom_text(aes(y=n,label=paste0(n,"\n",scales::percent(percentage))), vjust=-0.25, size=4) +
+  labs(title="Number of tours (Home-Based) - 2018, 19, 22 & 23")+
+  theme_bw()
+
+df<-as.data.frame(table(subdftraminer$ntours,subdftraminer$year, useNA="ifany"));df
+names(df)<-c("ntours","year","n")
+df <- df %>%
+    group_by(year) %>%
+    mutate(percentage = round(n/sum(n),digits=1)) %>%
+    ungroup
+df
+
+#df$year <- factor(df$year)
+df$ntours <- factor( df$ntours)
+
+ggplot(data=df, aes(x=ntours, y=n)) + ylim(0,5000) +
+geom_bar( stat="identity",fill="steelblue") +
+geom_text(aes(label=scales::percent(percentage)), vjust=-0.25, size=3) +
+  labs(title="Number of tours (Home-Based) - 2018,19, 22 & 23")+
+  theme_bw() +
+  facet_wrap(.~year,ncol = 3) 
+
+
+
+```
+
+Number of Tours 2018 to 23
+
+```{r}
+df<-as.data.frame(table(dftraminer.data$nwdtours, useNA="ifany"));df;names(df)<-c("ntours","n")
+df$percentage <- round(df$n/sum(df$n),digits=4)
+ggplot(data=df, aes(x=ntours, y=n)) + ylim(0,27000) +
+geom_bar( stat="identity",fill="steelblue") +
+geom_text(aes(y=n,label=paste0(n,"\n",scales::percent(percentage))), vjust=-0.25, size=4) +
+  labs(title="Number of tours (Home-Based) - 2018-23")+
+  theme_bw()
+
+df<-as.data.frame(table(dftraminer.data$nwdtours,dftraminer.data$year, useNA="ifany"));df
+names(df)<-c("ntours","year","n")
+df <- df %>%
+    group_by(year) %>%
+    mutate(percentage = round(n/sum(n),digits=3)) %>%
+    ungroup
+
+# ggplot(data=df, aes(x=ntours, y=n)) + ylim(0,7000) +
+# geom_bar( stat="identity",fill="steelblue") +
+#     scale_fill_viridis(discrete = TRUE) +
+# geom_text(aes(y=n,label=paste0(n,"\n",scales::percent(percentage))), vjust=-0.25, size=3) +
+#   labs(title="Number of tours (Home-Based) - 2018-23")+
+#   theme_bw() +
+#   facet_wrap(.~year,ncol = 2) + 
+#     scale_fill_viridis(discrete = TRUE)
+
+ggplot(data=df, aes(x=ntours, y=n, fill=year)) + ylim(0,7000) +
+geom_bar( stat="identity") +
+    scale_fill_viridis(discrete = TRUE) +
+geom_text(aes(y=n,label=paste0(n,"\n",scales::percent(percentage))), vjust=-0.25, size=3) +
+  labs(title="Number of tours (Home-Based) - 2018-23")+
+  theme_bw()+ 
+  theme(legend.position = "right",strip.text = element_text(size = 12),
+        strip.background = element_blank()) +
+  facet_wrap(.~year,ncol = 2) 
+```
+
+Number of act.mot.sub 2018, 19, 22 & 23
+
+```{r}
+df<-as.data.frame(table(subdftraminer$act.motif.sub, useNA="ifany"));df;names(df)<-c("act.motif","n")
+df$percentage <- round(df$n/sum(df$n),digits=4)
+ggplot(data=df, aes(x=act.motif, y=n)) + ylim(0,12000) +
+geom_bar( stat="identity",fill="steelblue") +
+geom_text(aes(y=n,label=paste0(n,"\n",scales::percent(percentage))), vjust=-0.25, size=4) +
+  labs(title="Number of Activity Motifs - 2018, 19, 22 & 23")+
+  theme_bw()
+
+subdftraminer$year <- factor(subdftraminer$year)
+df<-as.data.frame(table(subdftraminer$act.motif.sub,subdftraminer$year, useNA="ifany"));df
+names(df)<-c("act.motif","year","n")
+df <- df %>%
+    group_by(year) %>%
+    mutate(percentage = round(n/sum(n),digits=5)) %>%
+    ungroup
+df
+
+df$year <- droplevels(df$year)
+df$act.motif <- factor( df$act.motif)
+
+ggplot(data=df, aes(x=act.motif, y=n)) + ylim(0,3300) +
+geom_bar( stat="identity",aes(fill = year)) +
+geom_text(aes(label=scales::percent(percentage, 
+                        accuracy = 0.1)), hjust=-0.0, size=3) +
+  labs(title="Main Activity Motifs - 2018,19, 22 & 23")+ coord_flip()+
+  theme_bw() + 
+  theme(legend.position = "bottom") +
+  facet_wrap(.~year,ncol = 4) + 
+    scale_fill_viridis(discrete = TRUE)
+```
+
+
+Number of act.mot.sub 2018 a 23
+
+```{r}
+df<-as.data.frame(table(dftraminer.data$act.motif.sub, useNA="ifany"));df;names(df)<-c("act.motif","n")
+df$percentage <- round(df$n/sum(df$n),digits=4)
+ggplot(data=df, aes(x=act.motif, y=n)) + ylim(0,12000) +
+geom_bar( stat="identity",fill="steelblue") +
+geom_text(aes(y=n,label=paste0(n,"\n",scales::percent(percentage))), vjust=-0.25, size=4) +
+  labs(title="Number of Activity Motifs - 2018, 19, 22 & 23")+
+  theme_bw()
+
+dftraminer.data$year <- factor(dftraminer.data$year)
+df<-as.data.frame(table(dftraminer.data$act.motif.sub,dftraminer.data$year, useNA="ifany"));df
+names(df)<-c("act.motif","year","n")
+df <- df %>%
+    group_by(year) %>%
+    mutate(percentage = round(n/sum(n),digits=5)) %>%
+    ungroup
+df
+
+df$year <- droplevels(df$year)
+df$act.motif <- factor( df$act.motif)
+
+ggplot(data=df, aes(x=act.motif, y=n)) + ylim(0,3300) +
+geom_bar( stat="identity",aes(fill = year)) +
+geom_text(aes(label=scales::percent(percentage, 
+                        accuracy = 0.1)), hjust=-0.0, size=3) +
+  labs(title="Main Activity Motifs - 2018 to 23")+ coord_flip()+
+  theme_bw() + 
+  theme(legend.position = "none",strip.text = element_text(size = 12),
+        strip.background = element_blank()) +
+  facet_wrap(.~year,ncol = 3) + 
+    scale_fill_viridis(discrete = TRUE)
+```
+
+Number of act.mot.sub 2018 - 23
+
+```{r}
+df<-as.data.frame(table(dftraminer.data$activity.motif , useNA="ifany"));df;names(df)<-c("act.motif","n")
+df$percentage <- round(df$n/sum(df$n),digits=4)
+ggplot(data=df, aes(x=act.motif, y=n)) + ylim(0,12000) +
+geom_bar( stat="identity",fill="steelblue") +
+geom_text(aes(y=n,label=paste0(n,"\n",scales::percent(percentage))), vjust=-0.25, size=4) +
+  labs(title="Activity Motifs - 2018 to 23")+
+  theme_bw()
+
+df<-as.data.frame(table(dftraminer.data$activity.motif ,dftraminer.data$year, useNA="ifany"));df
+names(df)<-c("act.motif","year","n")
+df <- df %>%
+    group_by(year) %>%
+    mutate(percentage = round(n/sum(n),digits=5)) %>%
+    ungroup %>% data.frame()
+df
+
+df$year <- droplevels(df$year)
+df$act.motif <- factor( df$act.motif)
+
+ggplot(data=df, aes(x=act.motif, y=n)) + ylim(0,2100) +
+geom_bar( stat="identity",aes(fill = year)) +
+geom_text(aes(label=scales::percent(percentage, 
+                        accuracy = 1)), vjust=-0.0, size=2.5) +
+  labs(title="Active Motifs - 2018 to 23")+ 
+  #coord_flip()+
+  theme_bw() + 
+  theme(legend.position = "none",strip.text = element_text(size = 12),
+        strip.background = element_blank(), axis.text.x = element_text(size = 8, hjust = 0, vjust=0.5, angle=-90)) +
+  facet_wrap(.~year,ncol = 2) + 
+    scale_fill_viridis(discrete = TRUE)
+```
+
+
+```{r}
+tt <- table(dftraminer.data$startendHome);tt
+prop.table(table(dftraminer.data$startendHome))
+prop.table(table(dftraminer.data$startHome))
+prop.table(table(dftraminer.data$endHome))
+
+tt <- table( dftraminer.data$activity.motif, dftraminer.data$act.motif.sub)
+tt
+
+```
+
+Circular barchart activity.motif 2018 to 2023 with mean number of trips (population)
+
+```{r}
+library(stringr)
+
+dftraminer.data$act.motif.sub <- factor(dftraminer.data$act.motif.sub)
+
+plot_df <- dftraminer.data[ dftraminer.data$act.motif.sub!="Other",c("act.motif.sub","pesaix","order","year")] %>%
+  group_by(act.motif.sub,year) %>%
+  summarise(
+    sum_people = sum(pesaix),
+    mean_trips = weighted.mean(order, pesaix),
+    n = n()
+  ) %>%
+  mutate(mean_trips = round(mean_trips, digits = 0)) %>% data.frame()
+
+plt <- ggplot(plot_df) +
+  # Make custom panel grid
+  geom_hline(
+    aes(yintercept = y), 
+    data.frame(y = c(0:4) * 1000),
+    color = "yellow"
+  ) + 
+  # Add bars to represent the cumulative track lengths
+  # str_wrap(region, 5) wraps the text so each line has at most 5 characters
+  # (but it doesn't break long words!)
+  geom_col(
+    aes(
+      x = reorder(str_wrap(act.motif.sub, 13), sum_people),
+      y = sum_people,
+      fill = n
+    ),
+    position = "dodge2",
+    show.legend = TRUE,
+    alpha = .95
+  ) +
+  
+  # Add dots to represent the mean gain
+  geom_point(
+    aes(
+      x = reorder(str_wrap(act.motif.sub, 13), sum_people),
+      y = sum_people
+    ),
+    size = 0.1,
+    color = "gray12"
+  ) +
+  
+  # Lollipop shaft for mean gain per region
+  geom_segment(
+    aes(
+      x = reorder(str_wrap(act.motif.sub, 13), sum_people),
+      y = 0,
+      xend = reorder(str_wrap(act.motif.sub, 13), sum_people),
+      yend = 3000
+    ),
+    linetype = "dashed",
+    color = "gray12"
+  ) + 
+  
+  # Make it circular!
+  coord_polar() + 
+  # New fill and legend title for number of tracks per region
+  scale_fill_gradientn(
+    "Amount of Sample units by Main Activity.Motif",
+#     colours = c( "green","turquoise","orange","red")
+    colours = viridis(5)
+  ) +
+  # Make the guide for the fill discrete
+  guides(
+    fill = guide_colorsteps(
+      barwidth = 15, barheight = .5, title.position = "top", title.hjust = .5
+    )
+  ) +
+  theme(
+    # Remove axis ticks and text
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text.y = element_blank(),
+    # Use gray text for the region names
+    axis.text.x = element_text(color = "black", size = 7, angle=45, hjust=0.5, vjust=0.5 ),
+    # Move the legend to the bottom
+    legend.position = "bottom", strip.text = element_text(size = 12)
+  )+
+  facet_wrap(.~year,ncol = 3) 
+plt
+
+```
+
+
+Circular barchart activity.motif 2018 to 2023 with mean number of trips (population) Male
+
+```{r}
+library(stringr)
+
+dftraminer.data$act.motif.sub <- factor(dftraminer.data$act.motif.sub)
+
+plot_df <- dftraminer.data[ (dftraminer.data$gender=="M")&(dftraminer.data$act.motif.sub!="Other"),c("act.motif.sub","pesaix","order","year")] %>%
+  group_by(act.motif.sub,year) %>%
+  summarise(
+    sum_people = n(), #sum(pesaix),
+    mean_trips = weighted.mean(order, pesaix),
+    n = n()
+  ) %>%
+  mutate(mean_trips = round(mean_trips, digits = 0)) %>% data.frame()
+
+plt <- ggplot(plot_df) +
+  # Make custom panel grid
+  geom_hline(
+    aes(yintercept = y), 
+    data.frame(y = c(0:5) * 200),
+    color = "grey80"
+  ) + 
+  # Add bars to represent the cumulative track lengths
+  # str_wrap(region, 5) wraps the text so each line has at most 5 characters
+  # (but it doesn't break long words!)
+  geom_col(
+    aes(
+      x = reorder(str_wrap(act.motif.sub, 15), sum_people),
+      y = sum_people,
+      fill = n
+    ),
+    position = "stack",
+    show.legend = T,
+    alpha = .99
+  ) +
+  
+  # Add dots to represent the mean gain
+  geom_point(
+    aes(
+      x = reorder(str_wrap(act.motif.sub, 15), sum_people),
+      y = sum_people
+    ),
+    size = 0.1,
+    color = "gray12"
+  ) +
+  
+  # Lollipop shaft for mean gain per region
+  geom_segment(
+    aes(
+      x = reorder(str_wrap(act.motif.sub, 15), sum_people),
+      y = 0,
+      xend = reorder(str_wrap(act.motif.sub, 15), sum_people),
+      yend = 1000
+    ),
+    linetype = "dashed",
+    color = "gray60"
+  ) + 
+  
+  # Make it circular!
+  coord_polar() + scale_fill_stepsn("Amount of Sample units by Main Activity.Motif - Male",n.breaks = 7, colours = viridis::viridis(7)) +
+ #  # New fill and legend title for number of tracks per region
+ #  scale_fill_gradientn(
+ #    "Amount of Sample units by Main Activity.Motif",
+ # #    colours = c( "green","turquoise","orange","red","yellow")
+ #    colours = viridis(3)
+ #  ) +
+  # Make the guide for the fill discrete
+  guides( 
+    fill = guide_colorsteps( reverse=F,
+      barwidth = 20, barheight = .5, title.position = "top", title.hjust = .5
+    )
+  ) +
+  theme(panel.background = element_rect(colour="black",fill="white"),
+      strip.background=element_rect(colour="black",fill="grey95"),
+    # Remove axis ticks and text
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text.y = element_blank(),
+    # Use gray text for the region names
+    axis.text.x = element_text(color = "black", size = 7, angle=45, hjust=0.5, vjust=0.5 ),
+    # Move the legend to the bottom
+    legend.position = "bottom", strip.text = element_text(size = 12)
+  )+
+  facet_wrap(.~year,ncol = 3) 
+plt
+
+```
+
+Circular barchart activity.motif 2018 to 2023 with mean number of trips (population) Female
+
+```{r}
+library(stringr)
+
+dftraminer.data$act.motif.sub <- factor(dftraminer.data$act.motif.sub)
+
+plot_df <- dftraminer.data[ (dftraminer.data$gender=="F")&(dftraminer.data$act.motif.sub!="Other"),c("act.motif.sub","pesaix","order","year")] %>%
+  group_by(act.motif.sub,year) %>%
+  summarise(
+    sum_people = n(), #sum(pesaix),
+    mean_trips = weighted.mean(order, pesaix),
+    n = n()
+  ) %>%
+  mutate(mean_trips = round(mean_trips, digits = 0)) %>% data.frame()
+
+plt <- ggplot(plot_df) +
+  # Make custom panel grid
+  geom_hline(
+    aes(yintercept = y), 
+    data.frame(y = c(0:5) * 200),
+    color = "grey80"
+  ) + 
+  # Add bars to represent the cumulative track lengths
+  # str_wrap(region, 5) wraps the text so each line has at most 5 characters
+  # (but it doesn't break long words!)
+  geom_col(
+    aes(
+      x = reorder(str_wrap(act.motif.sub, 5), sum_people),
+      y = sum_people,
+      fill = n
+    ),
+    position = "stack",
+    show.legend = T,
+    alpha = .99
+  ) +
+  
+  # Add dots to represent the mean gain
+  geom_point(
+    aes(
+      x = reorder(str_wrap(act.motif.sub, 5), sum_people),
+      y = sum_people
+    ),
+    size = 0.1,
+    color = "gray12"
+  ) +
+  
+  # Lollipop shaft for mean gain per region
+  geom_segment(
+    aes(
+      x = reorder(str_wrap(act.motif.sub, 5), sum_people),
+      y = 0,
+      xend = reorder(str_wrap(act.motif.sub, 5), sum_people),
+      yend = 1000
+    ),
+    linetype = "dashed",
+    color = "gray60"
+  ) + 
+  
+  # Make it circular!
+  coord_polar() + scale_fill_stepsn("Amount of Sample units by Main Activity.Motif - Female",n.breaks = 7, colours = viridis::viridis(7)) +
+ #  # New fill and legend title for number of tracks per region
+ #  scale_fill_gradientn(
+ #    "Amount of Sample units by Main Activity.Motif",
+ # #    colours = c( "green","turquoise","orange","red","yellow")
+ #    colours = viridis(3)
+ #  ) +
+  # Make the guide for the fill discrete
+  guides( 
+    fill = guide_colorsteps( reverse=F,
+      barwidth = 20, barheight = .5, title.position = "top", title.hjust = .5
+    )
+  ) +
+  theme( panel.background = element_rect(colour="black",fill="white"),
+      strip.background=element_rect(colour="black",fill="grey95"),
+    # Remove axis ticks and text
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text.y = element_blank(),
+    # Use gray text for the region names
+    axis.text.x = element_text(color = "black", size = 7, angle=45, hjust=0.5, vjust=0.5 ),
+    # Move the legend to the bottom
+    legend.position = "bottom", strip.text = element_text(size = 12)
+  )+
+  facet_wrap(.~year,ncol = 3) 
+plt
+
+```
+
+
+Analitzar els indicadors de fragmentació segons els motius
+
+```{r}
+df<-dftraminer.data[,c("order","entropy","turbulence","complexity","ttr","act.motif.sub","year","pesaix")]
+df <- df %>%
+    drop_na() %>%
+    group_by(act.motif.sub) %>%
+    summarise( 
+            entropy = weighted.mean( entropy,pesaix ),
+            turbulence = weighted.mean(turbulence,pesaix ),
+            complexity = weighted.mean( complexity,pesaix ),
+            ttr = weighted.mean(ttr,pesaix),
+            ntrips = weighted.mean( order,pesaix )
+            ) %>%     data.frame()%>%
+              ungroup() %>%
+              mutate_at(vars(-act.motif.sub), rescale)
+df
+plt <- df %>%
+  ggradar(
+    font.radar = "sans",
+    grid.label.size = 6,  # Affects the grid annotations (0%, 50%, etc.)
+    axis.label.size = 5, # Afftects the names of the variables
+    group.point.size = 3,   # Simply the size of the point 
+        background.circle.colour = "white",
+        values.radar = c("0%",  "50%", "100%"),
+        axis.line.colour = "gray60",
+        gridline.min.colour = "gray60",
+        gridline.mid.colour = "gray60",
+        gridline.max.colour = "gray60",
+        group.colours = viridis(16),
+        legend.text.size = 9, centre.y = 0, legend.position = "bottom"
+  ) + 
+  labs(title = "Fragmentation variables by main activity motifs") + 
+  theme(
+      # plot.background = element_rect(fill = "#fbf9f4", color = "#fbf9f4"),
+      # panel.background = element_rect(fill = "#fbf9f4", color = "#fbf9f4"),
+      plot.title.position = "panel", # slightly different from default
+      plot.title = element_text(
+        family="sans",
+        size = 12,
+        face = "bold", 
+        color = "#2a475e"
+    )
+  )
+plt
+
+df<-dftraminer.data[,c("order","entropy","turbulence","complexity","ttr","act.motif.sub","year","pesaix")]
+df <- df %>%
+    group_by(act.motif.sub,year) %>%
+    dplyr::summarise( Ntrips = weighted.mean( order,pesaix ),
+            Entr = weighted.mean( entropy,pesaix ),
+            Turb = weighted.mean(turbulence,pesaix ),
+            Comp = weighted.mean( complexity,pesaix ),
+            TTR = weighted.mean(ttr,pesaix)
+            ) %>% data.frame() %>% 
+              ungroup() %>%
+              mutate_at(vars(c("Ntrips","Entr","Turb","Comp","TTR")), rescale)
+df
+
+plt <- df %>%
+  ggRadar( mapping = aes(group=year, facet=act.motif.sub),
+    font.radar = "sans", alpha = 0, scales = "fixed",rescale = F,
+    grid.label.size = 6,  # Affects the grid annotations (0%, 50%, etc.)
+    axis.label.size = 5, # Afftects the names of the variables
+    group.point.size = 2,   # Simply the size of the point 
+#         background.circle.colour = "black",
+# #        values.radar = c("0%",  "50%", "100%"),
+#         axis.line.colour = "gray20",
+#         gridline.min.colour = "gray20",
+#         gridline.mid.colour = "gray20",
+#         gridline.max.colour = "gray20",
+        legend.text.size = 12, centre.y = 0.25, legend.position = "bottom", inset=0  ) + 
+  scale_color_viridis(discrete = TRUE) +
+  labs(title = "Fragmentation Indicators by Main Activity Motifs") + 
+  theme(fill=guide_legend(nrow=1),
+#      plot.background = element_rect(fill = "#fbf9f4", color = "white"),
+#      panel.background = element_rect(fill = "#fbf9f4", color = "#fbf9f4"),
+      plot.title.position = "panel", # slightly different from default
+      plot.title = element_text(
+        family = "sans", 
+        size = 12,
+        face = "bold", 
+        color = "#2a475e" ),
+          strip.text.x = element_text(size = 14),
+          legend.title = element_text(face="bold",size = 10), legend.text = element_text(size = 10),
+          legend.position = "bottom",
+          text = element_text(size=12),
+          axis.text = element_text(size=10, face="bold"),axis.title = element_text(size=10)
+  ) + facet_wrap(~ act.motif.sub, ncol=8)
+
+plt
+```
+
+
+Analitzar els indicadors de fragmentació segons els main activity motifs i el gènere Female
+
+```{r}
+df<-dftraminer.data[,c("order","entropy","turbulence","complexity","ttr","act.motif.sub","year","pesaix","gender")]
+df <- df %>%
+    group_by(act.motif.sub,year,gender) %>%
+    dplyr::summarise( Ntrips = weighted.mean( order,pesaix ),
+            Entr = weighted.mean( entropy,pesaix ),
+            Turb = weighted.mean(turbulence,pesaix ),
+            Comp = weighted.mean( complexity,pesaix ),
+            TTR = weighted.mean(ttr,pesaix)
+            ) %>% data.frame() %>% 
+              ungroup() %>%
+              mutate_at(vars(c("Ntrips","Entr","Turb","Comp","TTR")), rescale)
+df
+
+plt <- df %>% filter(gender=="M") %>%
+  ggRadar( mapping = aes(group=year, facet=act.motif.sub),
+    font.radar = "sans", alpha = 0, scales = "fixed",rescale = F,
+    grid.label.size = 6,  # Affects the grid annotations (0%, 50%, etc.)
+    axis.label.size = 5, # Afftects the names of the variables
+    group.point.size = 2,   # Simply the size of the point 
+#         background.circle.colour = "black",
+# #        values.radar = c("0%",  "50%", "100%"),
+#         axis.line.colour = "gray20",
+#         gridline.min.colour = "gray20",
+#         gridline.mid.colour = "gray20",
+#         gridline.max.colour = "gray20",
+        legend.text.size = 12, centre.y = 0.25, legend.position = "bottom", inset=0  ) + 
+  scale_color_viridis(discrete = TRUE) +
+  labs(title = "Fragmentation Indicators by Main Activity Motifs - Male") + 
+  theme(fill=guide_legend(nrow=1),
+#      plot.background = element_rect(fill = "#fbf9f4", color = "white"),
+#      panel.background = element_rect(fill = "#fbf9f4", color = "#fbf9f4"),
+      plot.title.position = "panel", # slightly different from default
+      plot.title = element_text(
+        family = "sans", 
+        size = 12,
+        face = "bold", 
+        color = "#2a475e" ),
+          strip.text.x = element_text(size = 14),
+          legend.title = element_blank(), legend.text = element_text(size = 10),
+          legend.position = "none",
+          text = element_text(size=12),
+          axis.text = element_text(size=10, face="bold"),axis.title = element_text(size=10)) + 
+          facet_wrap(~ act.motif.sub, ncol=8)
+
+plt
+
+
+
+plt <- df %>% filter(gender=="F") %>%
+  ggRadar( mapping = aes(group=year, facet=act.motif.sub),
+    font.radar = "sans", alpha = 0, scales = "fixed",rescale = F,
+    grid.label.size = 6,  # Affects the grid annotations (0%, 50%, etc.)
+    axis.label.size = 5, # Afftects the names of the variables
+    group.point.size = 2,   # Simply the size of the point 
+#         background.circle.colour = "black",
+# #        values.radar = c("0%",  "50%", "100%"),
+#         axis.line.colour = "gray20",
+#         gridline.min.colour = "gray20",
+#         gridline.mid.colour = "gray20",
+#         gridline.max.colour = "gray20",
+        legend.text.size = 12, centre.y = 0.25, legend.position = "bottom", inset=0  ) + 
+  scale_color_viridis(discrete = TRUE) +
+  labs(title = "Fragmentation Indicators by Main Activity Motifs - Female") + 
+  theme(fill=guide_legend(nrow=1),
+#      plot.background = element_rect(fill = "#fbf9f4", color = "white"),
+#      panel.background = element_rect(fill = "#fbf9f4", color = "#fbf9f4"),
+      plot.title.position = "panel", # slightly different from default
+      plot.title = element_text(
+        family = "sans", 
+        size = 12,
+        face = "bold", 
+        color = "#2a475e" ),
+          strip.text.x = element_text(size = 14),
+          legend.title = element_text(face="bold",size = 10), legend.text = element_text(size = 10),
+          legend.position = "bottom",
+          text = element_text(size=12),
+          axis.text = element_text(size=10, face="bold"),axis.title = element_text(size=10)
+  ) + facet_wrap(~ act.motif.sub, ncol=8)
+
+plt
+```
+
+Analitzar els indicadors de fragmentació segons els main activity motifs i el gènere: queda fatal tot junt
+
+```{r}
+df<-dftraminer.data[,c("order","entropy","turbulence","complexity","ttr","act.motif.sub","year","pesaix","gender")]
+df <- df %>%
+    group_by(act.motif.sub,year,gender) %>%
+    dplyr::summarise( Ntrips = weighted.mean( order,pesaix ),
+            Entr = weighted.mean( entropy,pesaix ),
+            Turb = weighted.mean(turbulence,pesaix ),
+            Comp = weighted.mean( complexity,pesaix ),
+            TTR = weighted.mean(ttr,pesaix)
+            ) %>% data.frame() %>% 
+              ungroup() %>%
+              mutate_at(vars(c("Ntrips","Entr","Turb","Comp","TTR")), rescale)
+df
+
+plt <- df %>% 
+  ggRadar( data=df, mapping = aes(group=year, facet=c(act.motif.sub, gender)), margin=1.3,
+    font.radar = "sans", alpha = 0, scales = "fixed",rescale = F,
+    grid.label.size = 6,  # Affects the grid annotations (0%, 50%, etc.)
+    axis.label.size = 5, # Afftects the names of the variables
+    group.point.size = 2,   # Simply the size of the point 
+#         background.circle.colour = "black",
+# #        values.radar = c("0%",  "50%", "100%"),
+#         axis.line.colour = "gray20",
+#         gridline.min.colour = "gray20",
+#         gridline.mid.colour = "gray20",
+#         gridline.max.colour = "gray20",
+        legend.text.size = 12, centre.y = 0.25, legend.position = "bottom", inset=0  ) + 
+  scale_color_viridis(discrete = TRUE) +
+  labs(title = "Fragmentation Indicators by Main Activity Motifs and Gender ( M - Male & F - Female)") + 
+  theme(fill=guide_legend(nrow=1),
+#      plot.background = element_rect(fill = "#fbf9f4", color = "white"),
+#      panel.background = element_rect(fill = "#fbf9f4", color = "#fbf9f4"),
+      plot.title.position = "panel", # slightly different from default
+      plot.title = element_text(
+        family = "sans", 
+        size = 12,
+        face = "bold", 
+        color = "#2a475e" ),
+          strip.text.x = element_text(size = 10, face="bold"),
+          legend.title = element_text(size = 10, face="bold"), legend.text = element_text(size = 10, face="bold"),
+          legend.position = "bottom",
+          text = element_text(size=12),
+          axis.text = element_text(size=10, face="bold"),axis.title = element_text(size=10, face="bold")) + 
+          facet_grid( gender ~ act.motif.sub)
+
+plt
+```
+
+Incidència main activity motif per any segons gènere
+
+```{r}
+
+dfs<-dftraminer.data[dftraminer.data$act.motif.sub!="Other",c("order","entropy","turbulence","complexity","ttr","act.motif.sub","year","pesaix","gender","WfH","WEfH")]
+
+
+ggSpine(data=dfs,aes(x=act.motif.sub,fill=gender, facet=year),stat="identity",facetbycol=F, position="fill",labelsize = 3, addlabel=T,palette="Purples",digits=0) +
+   scale_fill_manual(values = c("green", "purple")) + theme( panel.spacing = unit(0.5, "cm", data = NULL),
+    panel.background = element_rect(colour="white",fill="white"),
+      strip.background=element_rect(colour="black",fill="grey95"),
+    panel.axis = element_text(color = "black", size = 5, angle=0, face="bold"),
+    # Remove axis ticks and text
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text.y = element_text(size=14),
+    axis.title.x.bottom= element_text(color = "black", size = 10, angle=0, face="bold" ),
+    # Use gray text for the region names
+    axis.text.x.bottom = element_text(color = "black", size = 12, angle=0, face="bold" ),
+    # Move the legend to the bottom
+   legend.position = "bottom", strip.text = element_text(size = 10, face="bold")
+  )
+
+dfs<-dftraminer.data[(dftraminer.data$act.motif.sub!="Other")&dftraminer.data$year %in% c("2022","2023"),c("order","entropy","turbulence","complexity","ttr","act.motif.sub","year","pesaix","gender","WfH","WEfH")]
+
+ggSpine(data=dfs,aes(x=act.motif.sub,fill=WfH, facet=year),stat="identity",facetbycol=F, position="fill",labelsize = 3, addlabel=T,palette="Reds",digits=0) +
+   theme( panel.spacing = unit(0.5, "cm", data = NULL),
+    panel.background = element_rect(colour="white",fill="white"),
+      strip.background=element_rect(colour="black",fill="grey95"),
+    # panel.axis = element_text(color = "black", size = 5, angle=0, face="bold"),
+    # Remove axis ticks and text
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text.y = element_blank(),
+    axis.title.x.bottom= element_text(color = "black", size = 10, angle=0, face="bold" ),
+    # Use gray text for the region names
+    axis.text.x.bottom = element_text(color = "black", size = 12, angle=0, face="bold" ),
+    # Move the legend to the bottom
+   legend.position = "bottom", strip.text = element_text(size = 10, face="bold")
+  )
+
+
+dfs<-dftraminer.data[dftraminer.data$act.motif.sub!="Other",c("order","entropy","turbulence","complexity","ttr","act.motif.sub","year","pesaix","gender","WfH","WEfH")]
+
+df <- dfs %>%
+    group_by(act.motif.sub,gender,year) %>%
+    dplyr::summarise( Ntrips = n(), share = n()/585.52
+            ) %>% data.frame() # %>%               ungroup() 
+df
+ggRose(df,aes(x=act.motif.sub,fill=gender,y=Ntrips, data_id = act.motif.sub, tooltip = gender), stat="identity",palette="Greens",size=0.2)+ ylab("Number of Main Activity Motifs")+
+  theme( legend.text = element_text(size = 10) , axis.title = element_text(size=10, face="bold"), 
+         legend.title = element_text(size=10, face="bold"),strip.text.x = element_text(size = 14)
+         ) +
+  facet_wrap(~year) + scale_fill_manual(values = c("green", "purple"))
+
+
+table(opi$reason.not.leave, opi$year)
+
+``` 
+
+PROVES A PARTIR D'AQUI Nb Main Activity Motifs per gender
+
+```{r}
+PieDonutCustom <- function (data, mapping, start = getOption("PieDonut.start", 
+                                           0), addPieLabel = TRUE, addDonutLabel = TRUE, showRatioDonut = TRUE, 
+          showRatioPie = TRUE, ratioByGroup = TRUE, showRatioThreshold = getOption("PieDonut.showRatioThreshold", 
+                                                                                   0.02), labelposition = getOption("PieDonut.labelposition", 
+                                                                                                                    2), labelpositionThreshold = 0.1, r0 = getOption("PieDonut.r0", 
+                                                                                                                                                                     0.3), r1 = getOption("PieDonut.r1", 1), r2 = getOption("PieDonut.r2", 
+                                                                                                                                                                                                                            1.2), explode = NULL, selected = NULL, explodePos = 0.1, 
+          color = "white", pieAlpha = 0.8, donutAlpha = 1, maxx = NULL, 
+          showPieName = TRUE, showDonutName = FALSE, title = NULL, 
+          pieLabelSize = 4, donutLabelSize = 3, titlesize = 5, explodePie = TRUE, 
+          explodeDonut = FALSE, use.label = TRUE, use.labels = TRUE, 
+          family = getOption("PieDonut.family", ""), palette_name="Dark2")
+{
+  (cols = colnames(data))
+  if (use.labels) 
+    data = moonBook::addLabelDf(data, mapping)
+  count <- NULL
+  if ("count" %in% names(mapping)) 
+    count <- moonBook::getMapping(mapping, "count")
+  count
+  pies <- donuts <- NULL
+  (pies = moonBook::getMapping(mapping, "pies"))
+  if (is.null(pies)) 
+    (pies = moonBook::getMapping(mapping, "pie"))
+  if (is.null(pies)) 
+    (pies = moonBook::getMapping(mapping, "x"))
+  (donuts = moonBook::getMapping(mapping, "donuts"))
+  if (is.null(donuts)) 
+    (donuts = moonBook::getMapping(mapping, "donut"))
+  if (is.null(donuts)) 
+    (donuts = moonBook::getMapping(mapping, "y"))
+  if (!is.null(count)) {
+    df <- data %>% group_by(.data[[pies]]) %>% dplyr::summarize(Freq = sum(.data[[count]]))
+    df
+  }
+  else {
+    df = data.frame(table(data[[pies]]))
+  }
+  colnames(df)[1] = pies
+  df$end = cumsum(df$Freq)
+  df$start = dplyr::lag(df$end)
+  df$start[1] = 0
+  total = sum(df$Freq)
+  df$start1 = df$start * 2 * pi/total
+  df$end1 = df$end * 2 * pi/total
+  df$start1 = df$start1 + start
+  df$end1 = df$end1 + start
+  df$focus = 0
+  if (explodePie) 
+    df$focus[explode] = explodePos
+  df$mid = (df$start1 + df$end1)/2
+  df$x = ifelse(df$focus == 0, 0, df$focus * sin(df$mid))
+  df$y = ifelse(df$focus == 0, 0, df$focus * cos(df$mid))
+  df$label = df[[pies]]
+  df$ratio = df$Freq/sum(df$Freq)
+  if (showRatioPie) {
+    df$label = ifelse(df$ratio >= showRatioThreshold, paste0(df$label, 
+                                                             "\n(", scales::percent(df$ratio), ")"), 
+                      as.character(df$label))
+  }
+  df$labelx = (r0 + r1)/2 * sin(df$mid) + df$x
+  df$labely = (r0 + r1)/2 * cos(df$mid) + df$y
+  if (!is.factor(df[[pies]])) 
+    df[[pies]] <- factor(df[[pies]])
+  df
+  mainCol = RColorBrewer::brewer.pal(nrow(df), name=palette_name)
+  df$radius = r1
+  df$radius[df$focus != 0] = df$radius[df$focus != 0] + df$focus[df$focus != 
+                                                                   0]
+  df$hjust = ifelse((df$mid%%(2 * pi)) > pi, 1, 0)
+  df$vjust = ifelse(((df$mid%%(2 * pi)) < (pi/2)) | (df$mid%%(2 * 
+                                                                pi) > (pi * 3/2)), 0, 1)
+  df$segx = df$radius * sin(df$mid)
+  df$segy = df$radius * cos(df$mid)
+  df$segxend = (df$radius + 0.05) * sin(df$mid)
+  df$segyend = (df$radius + 0.05) * cos(df$mid)
+  df
+  if (!is.null(donuts)) {
+    subColor = makeSubColor(mainCol, no = length(unique(data[[donuts]])))
+    subColor
+    data
+    if (!is.null(count)) {
+      df3 <- as.data.frame(data[c(donuts, pies, count)])
+      colnames(df3) = c("donut", "pie", "Freq")
+      df3
+      df3 <- eval(parse(text = "complete(df3,donut,pie)"))
+      df3$Freq[is.na(df3$Freq)] = 0
+      if (!is.factor(df3[[1]])) 
+        df3[[1]] = factor(df3[[1]])
+      if (!is.factor(df3[[2]])) 
+        df3[[2]] = factor(df3[[2]])
+      df3 <- df3 %>% arrange(.data$pie, .data$donut)
+      a <- df3 %>% spread(.data$pie, value = .data$Freq)
+      a = as.data.frame(a)
+      a
+      rownames(a) = a[[1]]
+      a = a[-1]
+      a
+      colnames(df3)[1:2] = c(donuts, pies)
+    }
+    else {
+      df3 = data.frame(table(data[[donuts]], data[[pies]]), 
+                       stringsAsFactors = FALSE)
+      colnames(df3)[1:2] = c(donuts, pies)
+      a = table(data[[donuts]], data[[pies]])
+      a
+    }
+    a
+    df3
+    df3$group = rep(colSums(a), each = nrow(a))
+    df3$pie = rep(1:ncol(a), each = nrow(a))
+    total = sum(df3$Freq)
+    total
+    df3$ratio1 = df3$Freq/total
+    df3
+    if (ratioByGroup) {
+      df3$ratio = scales::percent(df3$Freq/df3$group)
+    }
+    else {
+      df3$ratio <- scales::percent(df3$ratio1)
+    }
+    df3$end = cumsum(df3$Freq)
+    df3
+    df3$start = dplyr::lag(df3$end)
+    df3$start[1] = 0
+    df3$start1 = df3$start * 2 * pi/total
+    df3$end1 = df3$end * 2 * pi/total
+    df3$start1 = df3$start1 + start
+    df3$end1 = df3$end1 + start
+    df3$mid = (df3$start1 + df3$end1)/2
+    df3$focus = 0
+    if (!is.null(selected)) {
+      df3$focus[selected] = explodePos
+    }
+    else if (!is.null(explode)) {
+      selected = c()
+      for (i in 1:length(explode)) {
+        start = 1 + nrow(a) * (explode[i] - 1)
+        selected = c(selected, start:(start + nrow(a) - 
+                                        1))
+      }
+      selected
+      df3$focus[selected] = explodePos
+    }
+    df3
+    df3$x = 0
+    df3$y = 0
+    df
+    if (!is.null(explode)) {
+      explode
+      for (i in 1:length(explode)) {
+        xpos = df$focus[explode[i]] * sin(df$mid[explode[i]])
+        ypos = df$focus[explode[i]] * cos(df$mid[explode[i]])
+        df3$x[df3$pie == explode[i]] = xpos
+        df3$y[df3$pie == explode[i]] = ypos
+      }
+    }
+    df3$no = 1:nrow(df3)
+    df3$label = df3[[donuts]]
+    if (showRatioDonut) {
+      if (max(nchar(levels(df3$label))) <= 2) 
+        df3$label = paste0(df3$label, "(", df3$ratio, 
+                           ")")
+      else df3$label = paste0(df3$label, "\n(", df3$ratio, 
+                              ")")
+    }
+    df3$label[df3$ratio1 == 0] = ""
+    df3$label[df3$ratio1 < showRatioThreshold] = ""
+    df3$hjust = ifelse((df3$mid%%(2 * pi)) > pi, 1, 0)
+    df3$vjust = ifelse(((df3$mid%%(2 * pi)) < (pi/2)) | (df3$mid%%(2 * 
+                                                                     pi) > (pi * 3/2)), 0, 1)
+    df3$no = factor(df3$no)
+    df3
+    labelposition
+    if (labelposition > 0) {
+      df3$radius = r2
+      if (explodeDonut) 
+        df3$radius[df3$focus != 0] = df3$radius[df3$focus != 
+                                                  0] + df3$focus[df3$focus != 0]
+      df3$segx = df3$radius * sin(df3$mid) + df3$x
+      df3$segy = df3$radius * cos(df3$mid) + df3$y
+      df3$segxend = (df3$radius + 0.05) * sin(df3$mid) + 
+        df3$x
+      df3$segyend = (df3$radius + 0.05) * cos(df3$mid) + 
+        df3$y
+      if (labelposition == 2) 
+        df3$radius = (r1 + r2)/2
+      df3$labelx = (df3$radius) * sin(df3$mid) + df3$x
+      df3$labely = (df3$radius) * cos(df3$mid) + df3$y
+    }
+    else {
+      df3$radius = (r1 + r2)/2
+      if (explodeDonut) 
+        df3$radius[df3$focus != 0] = df3$radius[df3$focus != 
+                                                  0] + df3$focus[df3$focus != 0]
+      df3$labelx = df3$radius * sin(df3$mid) + df3$x
+      df3$labely = df3$radius * cos(df3$mid) + df3$y
+    }
+    df3$segx[df3$ratio1 == 0] = 0
+    df3$segxend[df3$ratio1 == 0] = 0
+    df3$segy[df3$ratio1 == 0] = 0
+    df3$segyend[df3$ratio1 == 0] = 0
+    if (labelposition == 0) {
+      df3$segx[df3$ratio1 < showRatioThreshold] = 0
+      df3$segxend[df3$ratio1 < showRatioThreshold] = 0
+      df3$segy[df3$ratio1 < showRatioThreshold] = 0
+      df3$segyend[df3$ratio1 < showRatioThreshold] = 0
+    }
+    df3
+    del = which(df3$Freq == 0)
+    del
+    if (length(del) > 0) 
+      subColor <- subColor[-del]
+    subColor
+  }
+  p <- ggplot() + ggforce::theme_no_axes() + coord_fixed()
+  if (is.null(maxx)) {
+    r3 = r2 + 0.3
+  }
+  else {
+    r3 = maxx
+  }
+  p1 <- p + ggforce::geom_arc_bar(aes_string(x0 = "x", y0 = "y", 
+                                    r0 = as.character(r0), r = as.character(r1), start = "start1", 
+                                    end = "end1", fill = pies), alpha = pieAlpha, color = color, 
+                         data = df) + transparent() + scale_fill_manual(values = mainCol) + 
+    xlim(r3 * c(-1, 1)) + ylim(r3 * c(-1, 1)) + guides(fill = FALSE)
+  if ((labelposition == 1) & (is.null(donuts))) {
+    p1 <- p1 + geom_segment(aes_string(x = "segx", 
+                                       y = "segy", xend = "segxend", yend = "segyend"), 
+                            data = df) + geom_text(aes_string(x = "segxend", 
+                                                              y = "segyend", label = "label", hjust = "hjust", 
+                                                              vjust = "vjust"), size = pieLabelSize, data = df, 
+                                                   family = family)
+  }
+  else if ((labelposition == 2) & (is.null(donuts))) {
+    p1 <- p1 + geom_segment(aes_string(x = "segx", 
+                                       y = "segy", xend = "segxend", yend = "segyend"), 
+                            data = df[df$ratio < labelpositionThreshold, ]) + 
+      geom_text(aes_string(x = "segxend", y = "segyend", 
+                           label = "label", hjust = "hjust", 
+                           vjust = "vjust"), size = pieLabelSize, 
+                data = df[df$ratio < labelpositionThreshold, 
+                ], family = family) + geom_text(aes_string(x = "labelx", 
+                                                           y = "labely", label = "label"), size = pieLabelSize, 
+                                                data = df[df$ratio >= labelpositionThreshold, ], 
+                                                family = family)
+  }
+  else {
+    p1 <- p1 + geom_text(aes_string(x = "labelx", y = "labely", 
+                                    label = "label"), size = pieLabelSize, data = df, 
+                         family = family)
+  }
+  if (showPieName) 
+    p1 <- p1 + annotate("text", x = 0, y = 0, label = pies, 
+                        size = titlesize, family = family)
+  p1 <- p1 + theme(text = element_text(family = family))
+  if (!is.null(donuts)) {
+    if (explodeDonut) {
+      p3 <- p + ggforce::geom_arc_bar(aes_string(x0 = "x", 
+                                        y0 = "y", r0 = as.character(r1), r = as.character(r2), 
+                                        start = "start1", end = "end1", fill = "no", 
+                                        explode = "focus"), alpha = donutAlpha, 
+                             color = color, data = df3)
+    }
+    else {
+      p3 <- p + ggforce::geom_arc_bar(aes_string(x0 = "x", 
+                                        y0 = "y", r0 = as.character(r1), r = as.character(r2), 
+                                        start = "start1", end = "end1", fill = "no"), 
+                             alpha = donutAlpha, color = color, data = df3)
+    }
+    p3 <- p3 + transparent() + scale_fill_manual(values = subColor) + 
+      xlim(r3 * c(-1, 1)) + ylim(r3 * c(-1, 1)) + guides(fill = FALSE)
+    p3
+    if (labelposition == 1) {
+      p3 <- p3 + geom_segment(aes_string(x = "segx", 
+                                         y = "segy", xend = "segxend", yend = "segyend"), 
+                              data = df3) + geom_text(aes_string(x = "segxend", 
+                                                                 y = "segyend", label = "label", hjust = "hjust", 
+                                                                 vjust = "vjust"), size = donutLabelSize, 
+                                                      data = df3, family = family)
+    }
+    else if (labelposition == 0) {
+      p3 <- p3 + geom_text(aes_string(x = "labelx", 
+                                      y = "labely", label = "label"), size = donutLabelSize, 
+                           data = df3, family = family)
+    }
+    else {
+      p3 <- p3 + geom_segment(aes_string(x = "segx", 
+                                         y = "segy", xend = "segxend", yend = "segyend"), 
+                              data = df3[df3$ratio1 < labelpositionThreshold, 
+                              ]) + geom_text(aes_string(x = "segxend", 
+                                                        y = "segyend", label = "label", hjust = "hjust", 
+                                                        vjust = "vjust"), size = donutLabelSize, 
+                                             data = df3[df3$ratio1 < labelpositionThreshold, 
+                                             ], family = family) + geom_text(aes_string(x = "labelx", 
+                                                                                        y = "labely", label = "label"), size = donutLabelSize, 
+                                                                             data = df3[df3$ratio1 >= labelpositionThreshold, 
+                                                                             ], family = family)
+    }
+    if (!is.null(title)) 
+      p3 <- p3 + annotate("text", x = 0, y = r3, 
+                          label = title, size = titlesize, family = family)
+    else if (showDonutName) 
+      p3 <- p3 + annotate("text", x = (-1) * r3, 
+                          y = r3, label = donuts, hjust = 0, size = titlesize, 
+                          family = family)
+    p3 <- p3 + theme(text = element_text(family = family))
+    grid::grid.newpage()
+    print(p1, vp = grid::viewport(height = 1, width = 1))
+    print(p3, vp = grid::viewport(height = 1, width = 1))
+  }
+  else {
+    p1
+  }
+}
+```
+
+
+```{r}
+dfs<-dftraminer.data[dftraminer.data$act.motif.sub!="Other",c("order","entropy","turbulence","complexity","ttr","act.motif.sub","year","pesaix","gender")]
+
+ggSpine(data=dfs,aes(x=act.motif.sub,fill=gender, facet=year),stat="identity",facetbycol=F, position="fill",labelsize = 3, palette="Greens") +
+  theme( panel.spacing = unit(1, "cm", data = NULL),
+         guide = guide_axis(angle = 45),
+    panel.background = element_rect(colour="black",fill="white"),
+      strip.background=element_rect(colour="black",fill="grey95"),
+    # Remove axis ticks and text
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text.y = element_blank(),
+    # Use gray text for the region names
+    axis.text.x = element_text(color = "red", size = 7, angle=45, hjust=0.5, vjust=0.5 ),
+    # Move the legend to the bottom
+   legend.position = "bottom", strip.text = element_text(size = 10,margin = margin(1, 1, 1, 1))
+  )
+
+
+dfs<-dftraminer.data[,c("order","entropy","turbulence","complexity","ttr","act.motif.sub","year","pesaix","gender")]
+
+df <- dfs %>%
+    group_by(act.motif.sub,gender,year) %>%
+    dplyr::summarise( Ntrips = n(), share = n()/585.52
+            ) %>% data.frame() # %>%               ungroup() 
+df
+ggRose(df,aes(x=act.motif.sub,fill=gender,y=Ntrips, data_id = act.motif.sub, tooltip = gender), stat="identity",palette="Greens",size=0.2)+ ylab("Number of Activity Motifs")+
+  facet_wrap(~year) + scale_fill_manual(values = c("green", "purple"))
+
+ggRose(df,aes(x=act.motif.sub,fill=year,y=Ntrips, data_id = act.motif.sub), stat="identity",palette="Greens",size=0.2)+
+  facet_wrap(~gender)
+
+ggRose(df,aes(x=act.motif.sub,fill=gender,y=share), stat="identity",palette="Greens",size=0.2)+
+  facet_wrap(~year)
+
+ggSpine(data=df,aes(x=act.motif.sub,fill=gender, y=Ntrips, facet=year),stat="identity",facetbycol=FALSE, palette="Reds")
+
+ggSpine(data=dfs,aes(x=act.motif.sub,fill=gender, facet=year),stat="identity",facetbycol=TRUE, palette="Reds")
+
+
+#+   facet_wrap(~year)
+
+require(plyr)
+require(moonBook)
+ggSpine(data=df,aes(x=act.motif.sub,fill=gender),interactive=TRUE)
+ggPieDonut(df,aes(pies=act.motif.sub,donuts=gender,count=Ntrips))
+ggPieDonut(df,aes(x=c(act.motif.sub,gender),count=Ntrips), polar=T) +
+    scale_color_viridis(discrete = TRUE)
+
+ggPieDonut(df,aes(x=c(act.motif.sub,gender),y=share), polar=T, palette=scale_color_viridis(discrete = TRUE)) 
+    
+PieDonutCustom(df,aes(act.motif.sub,gender),start=3*pi/2,explode=3,explodeDonut=TRUE,maxx=1.7,
+               palette_name = "Set1")
+ggPieDonut(browsers,aes(x=c(browser,version),y=share),interactive=TRUE)
+browsers
+
+install.packages("https://www.bnlearn.com/releases/bnlearn_latest.tar.gz", repos = NULL, type = "source")
+```
+
+
+# Guardar resultat
+
+```{r}
+#
+save(list=c("desp1","desp","opi", "dftraminer", "dftraminer.data","dftraminer.seq", "sense_mout"), file = "ITS_files18to23_v3.RData")
+```
+
