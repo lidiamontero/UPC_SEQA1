@@ -1,0 +1,1883 @@
+---
+title: "Create Dataset 2018-2024"
+author: "B Perez and J Acero - Modified L Montero"
+date: \today
+output:
+  pdf_document: default
+  html_notebook: default
+editor_options: 
+  chunk_output_type: console
+---
+####Include libraries
+```{r, include=FALSE, echo=FALSE}
+rm(list=ls())
+options(contrasts=c("contr.treatment","contr.treatment"))
+requiredPackages <- c("TraMineR","runner","lubridate","haven","magrittr","foreign","forcats","tidyr","rlang","cluster","ggplot2","grid","RColorBrewer","MASS","sf","dplyr","readxl","stringr","TraMineRextras")
+                      
+#check if packages are installed and loaded
+package.check <- lapply(requiredPackages, FUN = function(x) {
+  if (!require(x, character.only = TRUE)) {
+    install.packages(x, dependencies = TRUE)
+    library(x, character.only = TRUE)
+  }
+})
+search()
+```
+
+#### Load data from 2018 to 2023
+```{r warning=FALSE}
+#This path should be changed to your own working directory path 
+#setwd("C:/Users/lucas.valen/Desktop/ITS/") #set working directory
+opi18 = read.spss("Opinió EMEF2018.SAV", to.data.frame=TRUE, stringsAsFactor = TRUE)
+desp18 = read.spss("Desplaçaments EMEF2018.SAV", to.data.frame=TRUE, stringsAsFactor = TRUE)
+
+opi19 = read.spss("Opinió EMEF2019.sav", to.data.frame=TRUE, stringsAsFactor = TRUE)
+desp19 = read.spss("Desplaçaments - EMEF2019.sav", to.data.frame=TRUE, stringsAsFactor = TRUE)
+
+opi20 = read.spss("EMEF_2020_OPI.sav", to.data.frame=TRUE, stringsAsFactor = TRUE)
+desp20 = read.spss("EMEF_2020_DESP.sav", to.data.frame=TRUE, stringsAsFactor = TRUE)
+
+opi21 = read.spss("EMEF_2021_OPI.sav", to.data.frame=TRUE, stringsAsFactor = TRUE)
+desp21 = read.spss("EMEF_2021_DESP.sav", to.data.frame=TRUE, stringsAsFactor = TRUE)
+# Added by Lídia
+opi23 = read.spss("EMEF_2023_OPI.sav", to.data.frame=TRUE, stringsAsFactor = TRUE)
+desp23 = read.spss("EMEF_2023_DESP.sav", to.data.frame=TRUE, stringsAsFactor = TRUE)
+```
+
+# Added by Lídia: excel loading 2022, 2024
+
+```{r warning=FALSE}
+opi22 = read_excel("EMEF_2022_OPI.xlsx", col_names=T, na="#NULL!") %>% data.frame()
+desp22 = read_excel("EMEF_2022_DESP.xlsx", col_names=T, na="#NULL!") %>% data.frame()
+
+opi24 = read.csv("Microdades_OMC_Indivi_EMEF2024.csv", header=T,sep=";",dec=",") 
+desp24 = read.csv("Microdades_OMC_Despl_EMEF2024.csv", header=T,sep=";",dec=",") 
+```
+
+### 1. Create Opinion core datase
+
+#### Create a vector of names of the questions which belong to the core set of questions:
+```{r}
+Selected_questions <- c("id","gender","year","activity","job","leave.home","reason.not.leave","profession","q.pt.intram","q.pt.interm", "quality", "price", "low.emission", "f.walk", "f.bike", "f.car", "f.car.passenger", "f.moto", "f.pubtrans", "f.scooter", "f.sharedbike", "f.sharedmoto", "f.lorry", "r.walk","r.bike", "r.car", "r.car.passenger","r.moto", "r.pubtrans","r.scooter", "r.sharedbike", "r.sharedmoto", "r.lorry", "f.metro", "f.busBCN", "f.bus.local", "f.bus", "f.tram", "f.rodalies", "f.renfe", "f.fgc", "f.taxi", "f.coach", "r.metro", "r.busBCN", "r.bus.local", "r.bus", "r.tram", "r.rodalies", "r.renfe", "r.fgc","r.taxi","telework", "driver.license", "moto.license", "n.vehicles", "n.moto","n.ciclo","n.van", "n.lorry","n.bike", "n.scooter", "age.segment","birth.region" ,"education","handicap", "h.degree", "h.mobility", "com.res", "cor.res", "n.trips", "day", "fam.members",  "over.64","under.16", "g1","g2","g3","g4","g5","g6", "g7","g8","g9", "g10","a1","a2","a3","a4","a5","a6","a7","a8","a9","a10","pesaix", "pesmos","WfH","WEfH","ShofH" , "WfHMon","WfHTue","WfHWed", "WfHThu","WfHFri","habits","habSho","habShoOnline","habMoreHome","habEvents","habFriends","habRest","habNoChange","TrPuInfect","TrPuTime","TrPuMask","TrPuDist")
+
+```
+
+#### Rename column names of 2018-2024 data frames to the new ones.
+```{r}
+# ID;ANY;V02A_2;V02C_2;V02D1;TIPOL;V02B;V07A;V07B;V07C;V07D;V08_1;V08_2;V08_3;V08_4;V08_5;V08_6;V08_7;V08_9A;V08_9B;V08_10;V08_8;V08_19;V08_11;V08_12;V08_13;V08_14;V08_15;V08_16;V08_17;V08_18;V08_20;V10_1;V10_2;V10_3;V10_4;V10_5;V10_6;V10_7;V10_19;V10_9A;V10_9B;V10_10;V10_11;V10_12;V10_13;V10_14;V10_15;V10_16;V10_17;V10_18;V10_20;V11;V12_1;V12_2;V12_3;V12_4;V12_5;V13;V14;V15_1;V15_2;V15_3;V15_4;V15_98;MENORS16_G1;V16A_1;V16A_2;V16A_3;V16A_4;V16B_1;V16B_2;V16B_3;V16B_4;V16B_98;V16C;V17A_1;V17A_2;V17A_3;V17A_4;V17B_1;V17B_2;V17B_3;V17B_4;V17B_98;V17C;V20;V21;V22;V28_1;V28_2;V28_3;V28_4;V28_5;V28_6;V28_7;V28_8;V28_98;V30;V30A;V30B;V31A;V31B;V35;V36;V37_1;V37_2;V37_3;V38_1;V38_2;V38_3;V39;V40;V41;V42_1;V42_2;V42_3;V43_1;V43_2;V43_3;V44_W1;V32_W1;V33_W1;V34_W1;V32_W2;V33_1_W2;V33_2_W2;V33_3_W2;V33_4_W2;V33_5_W2;V34_1_W2;V34_2_W2;V34_3_W2;V34_4_W2;S01;S02;S03;COMARCA;CAMB;S00;MENORS16;MAJORS64;S04;V01A;V01B;V01C;V24;V25_1;V25_2;V25_3;V25_4;V25_5;V25_98;V25_99;PESAIX;PESMOS
+
+opi24 <- opi24 %>% rename("id" = "ID","activity"="V01A","professional" = "TIPOL", "leave.home" = "V02A_2","reason.not.leave" = "V02B",  "q.pt.interm" = "V07B","q.pt.intram" = "V07A","quality" = "V07C","price" = "V07D", "f.walk" = "V08_1", "f.bike" = "V08_2", "f.car" = "V08_4", "f.car.passenger" = "V08_5", "f.moto" = "V08_6", "f.pubtrans" = "V08_8", "f.scooter" = "V08_9A", "f.sharedbike" = "V08_3", "f.sharedmoto" = "V08_7", "f.lorry" = "V08_10", "r.walk" = "V10_1","r.bike"="V10_2", "r.car" = "V10_4", "r.car.passenger" = "V10_5",  "r.scooter" = "V10_9A", "r.sharedbike" = "V10_3", "r.moto" = "V10_6", "r.sharedmoto" = "V10_7", "r.lorry" = "V10_10", "f.metro" = "V08_11", "f.busBCN" = "V08_12", "f.bus.local" = "V08_13", "f.bus" = "V08_14", "f.tram" = "V08_15", "f.rodalies" = "V08_16", "f.renfe" = "V08_17", "f.fgc" = "V08_18", "f.taxi" = "V08_19", "f.coach" = "V08_20", "r.metro" = "V10_11", "r.busBCN" = "V10_12", "r.bus.local" = "V10_13", "r.bus" = "V10_14", "r.tram" = "V10_15", "r.rodalies" = "V10_16", "r.renfe" = "V10_17", "r.fgc" = "V10_18", "r.taxi" = "V10_19", "telework" = "V24", "fam.members"="S00","under.16"="MENORS16","over.64"="MAJORS64", "age.segment"="S02","birth.region" = "S03","education"="S04", "com.res"="COMARCA", "cor.res"="CAMB", "gender"="S01","n.trips"="V02C_2" ,"n.vehicles" = "V28_1","n.moto" = "V28_2","n.bike" = "V28_3","n.scooter" = "V28_4", "pesaix"="PESAIX", "pesmos"="PESMOS", 
+                          "WfHMon"="V25_1","WfHTue"="V25_2", "WfHWed"="V25_3", "WfHThu"="V25_4","WfHFri"="V25_5", "PTCard"= "V20"                   )
+
+
+opi23 <- opi23 %>% rename("id" = "TRAZA","activity"="V01","job" = "V01D", "leave.home" = "V02A_2","reason.not.leave" = "V02B", "profession" = "V04", "q.pt.interm" = "V07A","q.pt.intram" = "V07B","quality" = "V07C","price" = "V07D", "low.emission" = "V05C","f.walk" = "V08_1", "f.bike" = "V08_2", "f.car" = "V08_4", "f.car.passenger" = "V08_5", "f.moto" = "V08_6", "f.pubtrans" = "V08_8", "f.scooter" = "V08_9A", "f.sharedbike" = "V08_3", "f.sharedmoto" = "V08_7", "f.lorry" = "V08_10", "r.walk" = "V10_1","r.bike"="V10_2", "r.car" = "V10_4", "r.car.passenger" = "V10_5", "r.pubtrans" = "V10_8", "r.scooter" = "V10_9A", "r.sharedbike" = "V10_3", "r.moto" = "V10_6", "r.sharedmoto" = "V10_7", "r.lorry" = "V10_10", "f.metro" = "V08_11", "f.busBCN" = "V08_12", "f.bus.local" = "V08_13", "f.bus" = "V08_14", "f.tram" = "V08_15", "f.rodalies" = "V08_16", "f.renfe" = "V08_17", "f.fgc" = "V08_18", "f.taxi" = "V08_19", "f.coach" = "V08_20", "r.metro" = "V10_11", "r.busBCN" = "V10_12", "r.bus.local" = "V10_13", "r.bus" = "V10_14", "r.tram" = "V10_15", "r.rodalies" = "V10_16", "r.renfe" = "V10_17", "r.fgc" = "V10_18", "r.taxi" = "V10_19", "telework" = "V24", "fam.members"="S00", "age.segment"="S02_R3","birth.region" = "S03A","education"="S04","handicap" = "S06A","h.degree"="S06B", "com.res"="COMARCA2", "cor.res"="CAMB", "gender"="S01","n.trips"="V02C_2", "day" = "V02A_1",  "g2"="S02_2","g3"="S02_3","g4"="S02_4","g5"="S02_5","g6"="S02_6", "g7"="S02_7","g8"="S02_8","g9"="S02_9","g10"="S02_10","a2"="S02_2", "a3"="S02_3","a4"="S02_4","a5"="S02_5","a6"="S02_6","a7"="S02_7","a8"="S02_8","a9"="S02_9","a10"="S02_10","pesaix"="PESAIX", "pesmos"="PESMOS", "WfH"="V01D1_R2", "WEfH"="V01D1_R3", #"ShofH"="V25_W1",
+                          "WfHMon"="V25_1","WfHTue"="V25_2", "WfHWed"="V25_3", "WfHThu"="V25_4","WfHFri"="V25_5"
+                          #,"TrPuInfect"="V13_1","TrPuTime"="V13_2","TrPuMask"="V13_4","TrPuDist"="V13_5"
+                          )
+
+
+# Al 2022 no hi ha dades de permisos de conduir, ni de disponibilitat de vehicles
+opi22 <- opi22 %>% rename("id" = "TRAZA","activity"="V01","job" = "V01D", "leave.home" = "V02A_2","reason.not.leave" = "V02B", "profession" = "V04", "q.pt.interm" = "V07A","q.pt.intram" = "V07B","quality" = "V07C","price" = "V07D", "low.emission" = "V05C","f.walk" = "V08_1", "f.bike" = "V08_2", "f.car" = "V08_4", "f.car.passenger" = "V08_5", "f.moto" = "V08_6", "f.pubtrans" = "V08_8", "f.scooter" = "V08_9", "f.sharedbike" = "V08_3", "f.sharedmoto" = "V08_7", "f.lorry" = "V08_10", "r.walk" = "V10_1","r.bike"="V10_2", "r.car" = "V10_4", "r.car.passenger" = "V10_5", "r.pubtrans" = "V10_8", "r.scooter" = "V10_9", "r.sharedbike" = "V10_3", "r.moto" = "V10_6", "r.sharedmoto" = "V10_7", "r.lorry" = "V10_10", "f.metro" = "V08_11", "f.busBCN" = "V08_12", "f.bus.local" = "V08_13", "f.bus" = "V08_14", "f.tram" = "V08_15", "f.rodalies" = "V08_16", "f.renfe" = "V08_17", "f.fgc" = "V08_18", "f.taxi" = "V08_19", "f.coach" = "V08_20", "r.metro" = "V10_11", "r.busBCN" = "V10_12", "r.bus.local" = "V10_13", "r.bus" = "V10_14", "r.tram" = "V10_15", "r.rodalies" = "V10_16", "r.renfe" = "V10_17", "r.fgc" = "V10_18", "r.taxi" = "V10_19", "telework" = "V19A", "fam.members"="S00", "age.segment"="S02_R3","birth.region" = "V30A","education"="V31","handicap" = "V32A","h.degree"="V32B", "com.res"="COMARCA2", "cor.res"="CAMB", "gender"="S01","n.trips"="V02C_2", "day" = "V02A_1", "g1"="S01_1", "g2"="S01_2","g3"="S01_3","g4"="S01_4","g5"="S01_5","g6"="S01_6", "g7"="S01_7","g8"="S01_8","g9"="S01_9","g10"="S01_10","a1"="S02_1","a2"="S02_2", "a3"="S02_3","a4"="S02_4","a5"="S02_5","a6"="S02_6","a7"="S02_7","a8"="S02_8","a9"="S02_9","a10"="S02_10","pesaix"="PESAIX", "pesmos"="PESMOS", "WfH"="V01D1_R2", "WEfH"="V01D1_R3", "ShofH"="V25_W1", "WfHMon"="V19B_1","WfHTue"="V19B_2", "WfHWed"="V19B_3", "WfHThu"="V19B_4","WfHFri"="V19B_5","TrPuInfect"="V13_1","TrPuTime"="V13_2","TrPuMask"="V13_4","TrPuDist"="V13_5")
+
+
+opi21 <- opi21 %>% rename("id" = "TRAZA","activity"="V01", "job" = "V01D", "leave.home" = "V02A_2","reason.not.leave" = "V02B", "profession" = "V04", "q.pt.interm" = "V07A","q.pt.intram" = "V07B","quality" = "V07C","price" = "V07D", "low.emission" = "V08A","f.walk" = "V09A_1", "f.bike" = "V09A_2", "f.car" = "V09A_4", "f.car.passenger" = "V09A_5", "f.moto" = "V09A_6", "f.pubtrans" = "V09A_8", "f.scooter" = "V09A_9", "f.sharedbike" = "V09A_3", "f.sharedmoto" = "V09A_7", "f.lorry" = "V09A_10", "r.walk" = "V11_1","r.bike"="V11_2", "r.car" = "V11_4",, "r.car.passenger" = "V11_5", "r.pubtrans" = "V11_8", "r.scooter" = "V11_9", "r.sharedbike" = "V11_3", "r.moto" = "V11_6", "r.sharedmoto" = "V11_7", "r.lorry" = "V11_10", "f.metro" = "V09B_1", "f.busBCN" = "V09B_2", "f.bus.local" = "V09B_3", "f.bus" = "V09B_4", "f.tram" = "V09B_5", "f.rodalies" = "V09B_6", "f.renfe" = "V09B_7", "f.fgc" = "V09B_8", "f.taxi" = "V09B_9", "f.coach" = "V09B_10", "r.metro" = "V11_11", "r.busBCN" = "V11_12", "r.bus.local" = "V11_13", "r.bus" = "V11_14", "r.tram" = "V11_15", "r.rodalies" = "V11_16", "r.renfe" = "V11_17", "r.fgc" = "V11_18", "r.taxi" = "V11_19", "driver.license" = "V24B", "moto.license" = "V24A", "n.vehicles" = "V25A", "n.moto" = "V25A_2", "n.ciclo" = "V25A_3", "n.van" = "V25A_4", "n.lorry" = "V25A_5", "n.bike" = "V25A_6", "telework" = "V19A", "fam.members"="S00", "age.segment"="S02_R3","birth.region" = "V30A","education"="V31","handicap" = "V32A", "com.res"="COMARCA2", "cor.res"="CAMB", "gender"="S01", "n.trips"="V02C_2", "day" = "V02A_1", "g1"="S01_1","g2"="S01_2","g3"="S01_3","g4"="S01_4","g5"="S01_5","g6"="S01_6", "g7"="S01_7","g8"="S01_8","g9"="S01_9","g10"="S01_10","a1"="S02_1","a2"="S02_2", "a3"="S02_3","a4"="S02_4","a5"="S02_5","a6"="S02_6","a7"="S02_7","a8"="S02_8","a9"="S02_9","a10"="S02_10","pesaix"="PESAIX", "pesmos"="PESMOS","habits"="V20A","habSho"="V20B_1","habShoOnline"="V20B_2","habMoreHome"="V20B_3","habEvents"="V20B_4","habFriends"="V20B_5","habRest"="V20B_6","habNoChange"="V20B_7","TrPuInfect"="V22_1","TrPuTime"="V22_2","TrPuMask"="V22_4","TrPuDist"="V22_5")
+
+opi20 <- opi20 %>% rename("id" = "TRAZA","activity"="V01", "job" = "V01D", "leave.home" = "V02A_2", "profession" = "V04","q.pt.interm" = "V07A","q.pt.intram" = "V07B","quality" = "V07C","price" = "V07D","f.walk" = "V08A_1","f.bike" = "V08A_2","f.car" = "V08A_4","f.car.passenger" = "V08A_5","f.moto" = "V08A_6","f.pubtrans" = "V08A_8","f.scooter" = "V08A_9","f.sharedbike" = "V08A_3","f.moto" = "V08A_6","f.sharedmoto" = "V08A_7","f.lorry" = "V08A_10","f.metro" = "V08B_1","f.busBCN" = "V08B_2","f.bus.local" = "V08B_3","f.bus" = "V08B_4","f.tram" = "V08B_5","f.rodalies" = "V08B_6","f.renfe" = "V08B_7","f.fgc" = "V08B_8","f.taxi" = "V08B_9","f.coach" = "V08B_10","fam.members" = "V34","under.16" = "V35","age.segment"="S02_R3","birth.region" = "V37A", "education"="V38","handicap" = "V39A", "com.res"="COMARCA2","cor.res"="CAMB", "h.degree"="V39B", "gender"="S01", "n.trips"="V02C_2", "day" = "V02A_1","pesaix"="PESAIX", "pesmos"="PESMOS")
+
+opi19 <- opi19 %>% rename("id" = "TRAZA","activity"="V01","leave.home" = "V02A_2", "reason.not.leave" = "V02B", "profession" = "V04","q.pt.interm" = "V07A","q.pt.intram" = "V07B","quality" = "V07C", "price" = "V07D", "f.walk" = "V08A_1", "f.bike" = "V08A_2", "f.car" = "V08A_3", "f.car.passenger" = "V08A_4", "f.moto" = "V08A_5", "f.pubtrans" = "V08A_6", "f.scooter" = "V08A_7", "r.walk" = "V09A_1", "r.bike" = "V09A_2", "r.car" = "V09A_3", "r.car.passenger" = "V09A_4", "r.moto" = "V09A_5", "r.pubtrans" = "V09A_6", "r.scooter" = "V09A_7", "f.metro" = "V08B_1", "f.busBCN" = "V08B_2", "f.bus.local" = "V08B_3", "f.bus" = "V08B_4", "f.tram" = "V08B_5", "f.rodalies" = "V08B_6", "f.renfe" = "V08B_7", "f.fgc" = "V08B_8", "f.taxi" = "V08B_9", "r.metro" = "V09B_1", "r.busBCN" = "V09B_2", "r.bus.local" = "V09B_3", "r.bus" = "V09B_4", "r.tram" = "V09B_5", "r.rodalies" = "V09B_6", "r.renfe" = "V09B_7", "r.fgc" = "V09B_8", "r.taxi" = "V09B_9","age.segment"="S02_R3","birth.region" = "V16","education"="V17","handicap" = "V18A", "com.res"="COMARCA", "cor.res"="CAMB","h.degree"="V18B", "gender"="S01", "n.trips"="V02C_2", "day" = "V02A_1","pesaix"="PESAIX", "pesmos"="PESMOS")
+
+opi18 <- opi18 %>% rename("id" = "TRAZA","activity"="V01D1","leave.home" = "V02A_2","reason.not.leave" = "V02B", "profession" = "V04","q.pt.interm" = "V07A","q.pt.intram" = "V07B","quality" = "V07C", "price"="V07D","f.walk" = "V08A_1","f.bike" = "V08A_2","f.car" = "V08A_3","f.car.passenger" = "V08A_4","f.moto" = "V08A_5","f.pubtrans" = "V08A_6","f.scooter" = "V08A_7","f.bike" = "V08A_2","r.walk" = "V09A_1","r.bike" = "V09A_2","r_car" = "V09A_3","r.car.passenger" = "V09A_4","r.moto" = "V09A_5","r.pubtrans" = "V09A_6","r.scooter" = "V09A_7","f.metro" = "V08B_1","f.busBCN" = "V08B_2","f.bus.local" = "V08B_3","f.bus" = "V08B_4","f.tram" = "V08B_5","f.rodalies" = "V08B_6","f.renfe" = "V08B_7","r.metro" = "V09B_1","r.busBCN" = "V09B_2","r.bus.local" = "V09B_3","r.bus" = "V09B_4","r.tram" = "V09B_5","r.rodalies" = "V09B_6","r.renfe" = "V09B_7","n.vehicles" = "V13A","n.moto" = "V13B","n.bike" = "V13C","n.scooter" = "V13D", "birth.region" = "V20","education"="V21","handicap" = "V22A", "com.res"="COMARCA2", "cor.res"="CAMB", "h.degree"="V22B", "gender"="V00", "n.trips"="V02C_2", "day" = "V02A_1","pesaix"="PESAIX", "pesmos"="PESMOS")
+opi18$age.segment <- sub(".*?(\\d+.*)", "\\1", opi18$SEGMENT)
+```
+
+#### Filter and merge all years opinion core datasets:
+```{r}
+#add column of the year of the survey
+opi18 <- opi18 %>% mutate(year = 2018, .before = 1)
+opi19 <- opi19 %>% mutate(year = 2019, .before = 1)
+opi20 <- opi20 %>% mutate(year = 2020, .before = 1)
+opi21 <- opi21 %>% mutate(year = 2021, .before = 1)
+opi22 <- opi22 %>% mutate(year = 2022, .before = 1)
+opi23 <- opi23 %>% mutate(year = 2023, .before = 1)
+opi24 <- opi24 %>% mutate(year = 2024, .before = 1)
+
+# Just keep the Selected_questions
+opi18 <- select(opi18,any_of(Selected_questions))
+opi19 <- select(opi19,any_of(Selected_questions))
+opi20 <- select(opi20,any_of(Selected_questions))
+opi21 <- select(opi21,any_of(Selected_questions))
+opi22 <- select(opi22,any_of(Selected_questions))
+opi23 <- select(opi23,any_of(Selected_questions))
+opi24 <- select(opi24,any_of(Selected_questions))
+names(opi23)
+```
+
+2022 and 2024 has been imported from excel and factors and levels have not been defined
+
+```{r}
+names(opi22)
+# c(1,3,61,84,85) Numèriques del 2022
+colsasfactor <- names(opi22)[c(2,4:60,62:83,86:97)]; colsasfactor
+opi22 <- opi22 %>% mutate(across(colsasfactor,factor)) %>% data.frame()
+summary(opi22)
+
+names(opi24)
+# c(1,3,59,63:64) Numèriques del 2024
+colsasfactor <- names(opi24)[c(2,4:58,60:62,65:69)]; colsasfactor
+opi24 <- opi24 %>% mutate(across(colsasfactor,factor)) %>% data.frame()
+summary(opi24)
+
+table(opi22$fam.members,useNA = "always")
+table(opi24$fam.members,useNA = "always")
+summary(opi21)
+table(opi21$fam.members,useNA = "always")
+table(opi20$fam.members,useNA = "always")
+summary(opi20)
+table(opi19$fam.members,useNA = "always")
+# Create the opinion core dataset (dropping travel-related workers):
+opi <- bind_rows(opi24,opi23,opi22,opi21,opi20,opi19,opi18)
+```
+
+
+```{r}
+table(opi$profession,useNA="always")
+summary(opi)
+opi <- subset(opi, is.na(profession))
+opi$profession <- NULL 
+table(opi$fam.members,useNA = "always")
+```
+
+#### Change labels that differ in different years (simplification)
+```{r}
+names(opi)
+opi$cor.res <- factor(opi$cor.res)
+table(opi$cor.res, useNA="always")
+opi$cor.res <- fct_collapse( opi$cor.res,
+              "BCN" = c("BCN","1") ,
+              "ETM" = c("Resta 1a corona","2","ETM"),
+              "AMB" = c("Resta AMB","3","AMB"),
+              "RMB" = c("Resta RMB","4","RMB"),
+              other_level = "Other")
+
+table(opi$cor.res, useNA="always")
+table(opi$com.res, useNA="always")
+
+opi$com.res <- factor(opi$com.res)
+opi$com.res <- fct_collapse( opi$com.res,
+              "Alt Penedès" = c("Alt Penedès","3") ,
+              "Baix Llobregat" = c("Alt Empordà","11"),
+              "Barcelonès" = c("Barcelonès","13"),
+              "Garraf" = c("Garraf","17"),
+              "Maresme" = c("Maresme","21"),
+              "Vallès Occ." = c("Vallès Occidental","41"),
+              "Vallès Or." = c("Vallès Oriental","42"),
+              "Anoia" = c("Anoia", "6"),
+              "Berguedà" = c("Berguedà", "14"),
+              "Bages" = c("Bages","7"),
+              "Baix Penedès" = c("Baix Penedès","12"),
+              "Moianès" = c("Moianès","22"),
+              "Osona" = c("Osona","25"),
+              "La Selva" = c("La Selva","Selva","35"),
+              other_level = "Other")
+table(opi$com.res, opi$year, useNA="always")
+opi$gender <- factor(opi$gender)
+table(opi$gender,opi$year, useNA="always")
+levels(opi$gender) <- c("M","F","M","F")
+
+table(opi$activity,opi$year, useNA="always")
+levels(opi$activity)
+ll <- which(opi$year !="2024")
+ropi <- opi[ll,]
+sopi <- opi[-ll,]
+
+ropi$activity<-factor(ropi$activity)
+levels(ropi$activity)
+levels(ropi$activity) <- c("Active" ,"Unemployed","Retired","Retired", "Housemaker","Student","Active" ,"Unemployed","Retired","Retired", "Housemaker","Student","Other","Other","Retired","Other","Retired")
+table(ropi$activity,ropi$year,useNA="always")
+
+sopi$activity<-factor(sopi$activity)
+levels(sopi$activity)
+
+levels(sopi$activity) <- c("Active" ,"Unemployed","Retired", "Housemaker","Student","Other")
+table(sopi$activity,useNA="always")
+
+opi <- rbind(sopi,ropi)
+levels(opi$activity)
+table(opi$activity,opi$year,useNA="always")
+```
+
+
+```{r}
+levels(opi$job)
+table(opi$job,opi$year,useNA="always")
+
+levels(opi$job) <- c("self-employed", "employed", "civil.servant","Unknown","Unknown","self-employed", "employed", "civil.servant","Unknown","self-employed", "employed", "civil.servant")
+opi$job[is.na(opi$job)]<-"Unknown"
+summary(opi[,c("gender","activity","job")])
+
+table(opi$leave.home,useNA="always")
+levels(opi$leave.home) <- c("Yes","No","Yes","No")
+
+table(opi$reason.not.leave,useNA="always")
+levels(opi$reason.not.leave)
+opi$reason.not.leave <- fct_collapse(opi$reason.not.leave,
+                            "Disease" = c("Malaltia/Discapacitat","Malaltia, discapacitat","Malaltia", "Per alguna cosa relacionada amb la COVID19 (quarentena, por, persona de risc, malalt de COVID, ...)","1","8"),"Escorting" = c("No va sortir per tenir cura de persones a càrrec a la llar","9"),
+                            "Holiday" = c("Està de vacances","Tornava d'algun lloc","Estava de vacances","3","6"),
+                            "Telework" = c("Treballa al domicili","Va treballar/estudiar domicili", "Va treballar/estudiar al domicili","2"),
+                            "Other" = c("NS/NC","Altres (ESPECIFICAR)","Altres","No li calia/no va voler sortir","No vol contestar", "Edat (jubilat...)", "Edat (jubilada...)", "Està en ERTO total o parcial","4","5","7","98","99"))
+
+levels(opi$reason.not.leave)
+levels(opi$reason.not.leave) <- c("Disease", "Holiday", "Telework", "Other", "Escorting","Unknown")
+opi$reason.not.leave[is.na(opi$reason.not.leave)]<-"Unknown"    
+
+table(opi$birth.region,useNA="always")
+levels(opi$birth.region) <- c("Cat","Esp","other","other","Cat","Esp","other","other","other")
+
+opi$age.segment <- as.factor(opi$age.segment)
+table(opi$age.segment,opi$year,useNA="always")
+levels(opi$age.segment)
+levels(opi$age.segment) <- c("16-29","16-29","30-44","45-64","30-44","65+","45-64","65+")
+
+table(opi$handicap,useNA="always")
+levels(opi$handicap) <- c("Yes","No","No","Yes","No","No","Unknown")
+opi$handicap[is.na(opi$handicap)] <- "Unknown"
+```
+
+
+```{r}
+table(opi$education,useNA="always")
+levels(opi$education)
+opi$education <- fct_collapse(opi$education,
+                            "None" = c("Sense estudis","Altres (ESPECIFICAR)_duplicated_98" ,"No ho sap, no contesta", "Altres (ESPECIFICAR)","Altres","1","99","NS/NC","98"),
+                            "Primary" = c("Primaris (EGB, comerç, batxiller elemental,ESO)","2","Primaris"),
+                            "Secondary" = c("Secundaris (FP, BUP, COU, Preu, batxillerat actual, cicles formatius de grau mitjà)","3","Secundaris"),
+                            "Higher" = c("Estudis superiors (estudis universitaris, cicles formatius de grau superior)","4","Estudis superiors"))
+
+table(opi$education,opi$year, useNA="always")
+# define a function to remap levels of freq of transport
+
+remap_levels <- function(x) {
+  x <- fct_collapse(x,
+                    "Never"=c("Mai","Mai/Quasi mai", "No","0"),
+                    "Occassionally"=c( "Ocasionalment","Menys d'un cop al mes","Una vegada al mes","Amb menor freqüència" ,"1","2","3"),
+                    "Sometimes"=c("A vegades","Vàries vegades al mes","Varies vegades al mes","Una vegada a la setmana","Sovint","4","5"),
+                    "Usually"=c("Vàries vegades per setmana","Sí","6"), "Always"=c("Sempre","Cada dia / quasi cada dia","Cada dia/quasi cada dia", "Quasi sempre","7"), "Unknown"=c("NS/NC","Ns/nc","99","(Other)"),other_level="Unknown")
+  return(x)
+}
+
+# remap levels in all attributes in a loop
+variables <- c("f.walk", "f.bike", "f.car", "f.car.passenger", "f.moto", "f.pubtrans", "f.scooter", "f.sharedbike", "f.sharedmoto", "f.lorry", "f.metro", "f.busBCN", "f.bus.local", "f.bus", "f.tram", "f.rodalies", "f.renfe", "f.fgc", "f.taxi", "f.coach")
+
+summary(opi[,variables])
+for (variable in variables) {
+  opi[[variable]] <- remap_levels(opi[[variable]])
+  ll <- which( is.na(opi[[variable]]))
+  opi[[variable]][ll] <- "Unknown"
+}
+```
+
+
+```{r}
+variables <- c("r.walk", "r.bike", "r.car", "r.car.passenger", "r.moto", "r.pubtrans", "r.scooter", "r.sharedbike", "r.sharedmoto", "r.lorry", "r.metro", "r.busBCN", "r.bus.local", "r.bus", "r.tram", "r.rodalies", "r.renfe", "r.fgc", "r.taxi")
+str(opi[,variables])
+str(opi21[,variables])
+summary(opi[,variables])
+for (variable in variables) {
+  opi[[variable]] <- as.numeric(as.character(opi[[variable]]))
+  ll <- which( (opi[[variable]]==99)|(is.na(opi[[variable]])))
+  opi[[variable]][ll] <- NA
+}
+
+table(opi$f.scooter,opi$year,useNA="always")
+```
+
+
+```{r}
+variables <- c("n.vehicles", "n.moto","n.ciclo","n.van", "n.lorry","n.bike", "n.scooter")
+summary(opi[,variables])
+for (variable in variables) {
+  opi[[variable]] <- as.numeric(as.character(opi[[variable]]))
+}
+summary(opi[,variables])
+tapply(opi[,variables],opi$year,summary)
+
+names(opi)
+
+variables <- names(opi)[65:69]
+summary(opi[,variables])
+ndaysWfH <- rep(0,nrow(opi))
+for (variable in variables) {
+  ndaysWfH <- ndaysWfH + ifelse((opi[[variable]]) %in% c("1","Sí"),1,0)
+}
+opi$ndaysWfH <- ndaysWfH 
+summary(opi$ndaysWfH)
+```
+
+
+
+```{r}
+table(opi22$telework,useNA="always")
+summary(opi$telework)
+levels(opi$telework)
+levels(opi$telework)<-c("Some.Online","Always.F2F","NonActive","Some.Online","Always.F2F","NonActive","Always.F2F","Some.Online","Some.Online","Some.Online","Some.Online","NonActive")
+ll<-which(is.na(opi$telework))
+opi$telework[ll] <- "NonActive"
+table(opi$telework,useNA="always")
+
+names(opi)
+summary(opi$h.degree)
+levels(opi$h.degree)
+levels(opi$h.degree)<-c("33-64%","65-74%","75%+","<33%","33-64%","65-74%","75%+","<33%","75%+","0%")
+ll<-which(is.na(opi$h.degree))
+opi$h.degree[ll] <- "0%"
+table(opi$h.degree,useNA="always")
+```
+
+
+```{r}
+summary(opi$day)
+levels(opi$day)
+levels(opi$day)<-c("Mon","Tue","Wed","Thur","Fri","Mon","Tue","Wed","Thur","Fri","Unknown")
+ll<-which(is.na(opi$day));length(ll)
+if ( length(ll)> 0) opi$day[ll] <- "Unknown"
+table(opi$day,useNA="always")
+```
+
+
+```{r}
+summary(opi$fam.members)
+opi$fam.members<-as.numeric(levels(opi$fam.members))[opi$fam.members]
+table(opi$fam.members,opi$year,useNA="always")
+table(opi$fam.members,useNA="always")
+ll<-which(opi$fam.members %in% c(11:14,28,99))
+if ( length(ll)> 0) opi$fam.members[ll] <- NA
+
+summary(opi$under.16)
+table(opi$under.16,opi$year,useNA="always")
+opi$under.16<-as.numeric(levels(opi$under.16))[opi$under.16]
+ll <- which( (opi$year=="2020")&(opi$under.16>0))
+opi$under.16[ll]<-1
+table(opi$under.16,opi$year,useNA="always")
+# ll<-which(opi$under.16 > 10)
+# if ( length(ll)> 0) opi$under.16[ll] <- 10
+ll <-which((is.na(opi$under.16))&(opi$year=="2020"))
+opi$under.16[ ll ]<-0
+names(opi)
+
+opi$under.16 <- factor(opi$under.16,labels=c("No","Yes"))
+
+variables <- names(opi)[c(76:84,97)] ; variables # Age[]
+summary(opi[,variables])
+for (variable in variables) {
+  opi[[variable]] <- as.numeric(as.character(opi[[variable]]))
+  ll <- which(opi[[variable]]==999)
+  if (length(ll)>0) opi[[variable]][ll] <- NA
+}
+summary(opi[,variables])
+tapply(opi[,variables],opi$year,summary)
+
+variables <- names(opi)[c(76:84,97)]  # Age <= 16
+ll <- which( (opi$year %in% c("2021","2022","2023")) )
+nfills <- rep(0,nrow(opi))
+for (variable in variables) {
+ nfills[ll] <- ifelse((opi[[variable]][ll] < 17)&(!is.na(opi[[variable]][ll])), nfills[ll]+1, nfills[ll])
+}
+summary(nfills[ll])
+# opi$under.16[ll] <- nfills[ll]
+opi$under.16[ll] <- ifelse(nfills[ll]==0,"No","Yes")
+opi$under.16 <- factor(opi$under.16)
+tapply(opi$under.16,opi$year,summary)
+```
+
+
+```{r}
+remap_levels <- function(x) {
+  x <- fct_collapse(x,
+                    "Male"=c("Home","1"),
+                    "Female"=c("Dona","2"),
+                    "UnDef"=c("99","No contesta",TRUE),
+                    other_level="Missing")
+  return(x)
+}
+names(opi)
+variables <- names(opi)[c(87:96)]
+summary(opi[,variables])
+
+for (variable in variables) {
+  opi[[variable]] <- remap_levels(opi[[ variable ]])
+  opi[[variable]] <- factor(opi[[variable]])
+  levels(opi[[variable]]) <- c(levels(opi[[variable]]),"Missing")
+  ll <- which(is.na(opi[[variable]]))
+  if (length(ll)>0) opi[[variable]][ll] <- "Missing"
+}
+
+summary(opi[,variables])
+tapply(opi[,variables],opi$year,summary)
+
+names(opi)
+table(opi$under.16,opi$year,useNA="always")
+
+variables <- names(opi)[c(63:71,91)]
+summary(opi[,variables])
+nfamembres <- rep(0,nrow(opi))
+for (variable in variables) {
+  nfamembres <- nfamembres + ifelse(is.na(opi[[variable]]),0,1)
+}
+
+summary(nfamembres)
+ll <- which( opi$year %in% c("2021","2022","2023"))
+summary(opi$fam.members[ll])
+summary(nfamembres[ll])
+opi$fam.members[ll] <-nfamembres[ll]
+opi[ll,c("fam.members",variables)]
+cbind(opi[opi$year=="2021",c("fam.members",variables)],nfamembres[opi$year=="2021"])
+cbind(opi[opi$year=="2022",c("fam.members",variables)],nfamembres[opi$year=="2022"])
+opi[opi$year=="2023",c("fam.members",variables)]
+ll21 <- which( opi$year %in% c("2021"))
+opi$fam.members[ll21] <-nfamembres[ll21]  + 1
+
+summary(opi$fam.members)
+table(opi$fam.members,opi$year,useNA="always")
+table(opi$n.trips,opi$year,useNA="always")
+#Falta n.trips, driver.license moto.license
+
+names(opi)
+#opi[opi$idyear=="3850-2018",]
+```
+
+Tractament del teletreball i compres online - Extensió de les variables per dftraminer
+
+```{r}
+names(opi)
+table(opi$WfH, opi$year,useNA="always")
+opi$WfH <- as.numeric(opi$WfH)
+
+opi$WfH[is.na(opi$WfH)] <- 9
+opi$WfH <- factor(opi$WfH, labels = c("Work.Online","Work.F2F","Unemployed","NonActive","Work.Online","Work.F2F","Unemployed","NonActive","Unknown"))
+table(opi$WfH, useNA="always")
+
+table(opi$WEfH, opi$year,useNA="always")
+#opi$WEfH[is.na(opi$WEfH)] <- 7
+
+# Ocupat Teletreball
+# Ocupat no-Teletreball
+# Aturat
+# Jubilat/Pensionista/T. de la llar
+# Estudiant a distància
+# Estudiant presencial
+
+opi$WEfH <- factor(opi$WEfH, labels = c("Work.Online","Work.F2F","Unemployed","NonActive","Student.Online","Student.F2F","Work.Online","Work.F2F","Unemployed","NonActive","Student.Online","Student.F2F","Unknown"))
+table(opi$WEfH, useNA="always")
+opi$WEfH[is.na(opi$WEfH)] <- "Unknown"
+
+table(opi$ShofH, useNA="always")
+opi$ShofH[is.na(opi$ShofH)] <- 99
+opi$ShofH <- factor(opi$ShofH, labels = c("Yes","No","Unknown"))
+table(opi$ShofH, useNA="always")
+
+table(opi$habits,useNA="always")
+opi$habits <- as.character(opi$habits)
+opi$habits[is.na(opi$habits)] <- "Unknown"
+opi$habits <- factor(opi$habits, labels=c("No","Yes","Unknown"))
+table(opi$habits, useNA="always")
+
+table(opi$habSho,useNA="always")
+opi$habSho <- as.character(opi$habSho)
+opi$habSho[is.na(opi$habSho)] <- "Unknown"
+opi$habSho <- factor(opi$habSho, labels=c("No","Yes","Unknown"))
+table(opi$habSho, useNA="always")
+
+table(opi$habShoOnline,useNA="always")
+opi$habShoOnline <- as.character(opi$habShoOnline)
+opi$habShoOnline[is.na(opi$habShoOnline)] <- "Unknown"
+opi$habShoOnline <- factor(opi$habShoOnline, labels=c("No","Yes","Unknown"))
+table(opi$habShoOnline, useNA="always")
+
+table(opi$habMoreHome,useNA="always")
+opi$habMoreHome <- as.character(opi$habMoreHome)
+opi$habMoreHome[is.na(opi$habMoreHome)] <- "Unknown"
+opi$habMoreHome <- factor(opi$habMoreHome, labels=c("No","Yes","Unknown"))
+table(opi$habMoreHome, useNA="always")
+
+table(opi$habEvents,useNA="always")
+opi$habEvents <- as.character(opi$habEvents)
+opi$habEvents[is.na(opi$habEvents)] <- "Unknown"
+opi$habEvents <- factor(opi$habEvents, labels=c("No","Yes","Unknown"))
+table(opi$habEvents, useNA="always")
+
+table(opi$habFriends,useNA="always")
+opi$habFriends <- as.character(opi$habFriends)
+opi$habFriends[is.na(opi$habFriends)] <- "Unknown"
+opi$habFriends <- factor(opi$habFriends, labels=c("No","Yes","Unknown"))
+table(opi$habFriends, useNA="always")
+
+table(opi$TrPuInfect,useNA="always")
+opi$TrPuInfect <- as.character(opi$TrPuInfect)
+opi$TrPuInfect[is.na(opi$TrPuInfect)] <- "Unknown"
+table(opi$TrPuInfect,useNA="always")
+opi$TrPuInfect <- factor(opi$TrPuInfect, labels=c("Yes","No","Unknown","No","Unknown","Yes","Unknown"))
+table(opi$TrPuInfect, useNA="always")
+
+table(opi$TrPuTime,useNA="always")
+opi$TrPuTime <- as.character(opi$TrPuTime)
+opi$TrPuTime[is.na(opi$TrPuTime)] <- "Unknown"
+table(opi$TrPuTime,useNA="always")
+opi$TrPuTime <- factor(opi$TrPuTime, labels=c("Yes","No","Unknown","No","Unknown","Yes","Unknown"))
+table(opi$TrPuTime, useNA="always")
+
+table(opi$TrPuMask,useNA="always")
+opi$TrPuMask <- as.character(opi$TrPuMask)
+opi$TrPuMask[is.na(opi$TrPuMask)] <- "Unknown"
+table(opi$TrPuMask,useNA="always")
+opi$TrPuMask <- factor(opi$TrPuMask, labels=c("Yes","No","Unknown","No","Unknown","Yes","Unknown"))
+table(opi$TrPuMask, useNA="always")
+
+table(opi$TrPuDist,useNA="always")
+opi$TrPuDist <- as.character(opi$TrPuDist)
+opi$TrPuDist[is.na(opi$TrPuDist)] <- "Unknown"
+table(opi$TrPuDist,useNA="always")
+opi$TrPuDist <- factor(opi$TrPuDist, labels=c("Yes","No","Unknown","No","Unknown","Yes","Unknown"))
+table(opi$TrPuDist, useNA="always")
+
+table(opi$com.res, opi$year, useNA="always")
+```
+
+### 2. Create displacement core dataset.
+
+```{r}
+
+desp24 <- desp24 %>% rename("id" = "ID" ,"order" = "ORDRE" , "reason"="V03A","com.ori"="COM_O2","com.des"="COM_D2","crown.ori"="CAMB_O1","crown.des"="CAMB_D1","hour"="V03D","minute"="V03E","duration"="V03F","m1"="V03G","m2"="V03H","m3"="V03I","m.main"="V03G_R1","multimodality"="V03G_R5","parking"="V03J","antiquity"="V03L_1","ocupation"="V03N","fuel"="V03M","t.taxi"="V03O","t.car"="V03P_1","t.car.passanger"="V03P_2","t.moto"="V03Q_1","t.moto.passanger"="V03Q_2","t.bike"="V03R","t.scooter"="V03S","reason.not.work"="V03T","pesaix"="PESAIX", "pesmos"="PESMOS", "dist.orto"="DISTANCIA_ORTO_REC_R1","job"="V01D1","com.res"="COMARCA")
+
+desp23 <- desp23 %>% rename("id" = "TRAZA" ,"order" = "ORDRE" , "reason"="V03A","dist.ori"="V03B_2","dist.des"="V03C_2","com.ori"="COM_O1","com.des"="COM_D1","crown.ori"="CAMB_O1","crown.des"="CAMB_D1","hour"="V03D","minute"="V03E","duration"="V03F","duration.range"="V03F_R","m1"="V03G","m2"="V03H","m3"="V03I","m.main"="V03G_R1","multimodality"="V03G_R4","parking"="V03J","antiquity"="V03L_1","ocupation"="V03N","fuel"="V03M","t.taxi"="V03O","t.car"="V03P_1","t.car.passanger"="V03P_2","t.moto"="V03Q_1","t.moto.passanger"="V03Q_2","t.bike"="V03R","t.scooter"="V03S","reason.not.work"="V03T","pesaix"="PESAIX", "pesmos"="PESMOS", "dist.orto"="DISTANCIA_ORTO_REC_R1","com.res"="COMARCA2")
+
+desp22 <- desp22 %>% rename("id" = "TRAZA" ,"order" = "ORDRE" , "reason"="V03A","mun.ori"="V03B_1","mun.des"="V03C_1","dist.ori"="V03B_2","dist.des"="V03C_2","com.ori"="COM_O1","com.des"="COM_D1","crown.ori"="CAMB_O1","crown.des"="CAMB_D1","hour"="V03D","minute"="V03E","duration"="V03F","duration.range"="V03F_R","m1"="V03G","m2"="V03H","m3"="V03I","m.main"="V03G_R1","multimodality"="V03G_R4","parking"="V03J","antiquity"="V03L_1","ocupation"="V03N","fuel"="V03M","t.taxi"="V03O","t.car"="V03P_1","t.car.passanger"="V03P_2","t.moto"="V03Q_1","t.moto.passanger"="V03Q_2","t.bike"="V03R","t.scooter"="V03S","reason.not.work"="V03T","pesaix"="PESAIX", "pesmos"="PESMOS","com.res"="COMARCA2")
+
+desp21 <- desp21 %>% rename("id" = "TRAZA" ,"order" = "ORDRE" , "reason"="V03A","mun.ori"="V03B_1","mun.des"="V03C_1","dist.ori"="V03B_2","dist.des"="V03C_2","com.ori"="COM_O1","com.des"="COM_D1","crown.ori"="CAMB_O1","crown.des"="CAMB_D1","hour"="V03D","minute"="V03E","duration"="V03F","duration.range"="V03F_R","m1"="V03G","m2"="V03H","m3"="V03I","m.main"="V03G_R1","multimodality"="V03G_R4","parking"="V03J","antiquity"="V03L_1","ocupation"="V03N","fuel"="V03M","t.taxi"="V03O","t.car"="V03P_1","t.car.passanger"="V03P_2","t.moto"="V03Q_1","t.moto.passanger"="V03Q_2","t.bike"="V03R","t.scooter"="V03S","reason.not.work"="V03T","pesaix"="PESAIX", "pesmos"="PESMOS","com.res"="COMARCA2")
+
+desp20 <- desp20 %>% rename("id" = "TRAZA" ,"order" = "ORDRE" ,"reason"="V03A","mun.ori"="V03B_1","mun.des"="V03C_1","dist.ori"="V03B_2","dist.des"="V03C_2","com.ori"="COM_O1","com.des"="COM_D1","crown.ori"="CAMB_O1","crown.des"="CAMB_D1","hour"="V03D","minute"="V03E","duration"="V03F","duration.range"="V03F_R","m1"="V03G","m2"="V03H","m3"="V03I","m.main"="V03G_R1","multimodality"="V03G_R4","parking"="V03J","antiquity"="V03L","ocupation"="V03N","fuel"="V03M","t.taxi"="V03O","t.car"="V03P_1","t.car.passanger"="V03P_2","t.moto"="V03Q_1","t.moto.passanger"="V03Q_2","t.bike"="V03R","t.scooter"="V03S","reason.not.work"="V03T","pesaix"="PESAIX", "pesmos"="PESMOS","com.res"="COMARCA2")
+
+desp19 <- desp19 %>% rename("id" = "TRAZA" ,"order" = "ORDRE" ,"reason"="V03A","mun.ori"="V03B_1","mun.des"="V03C_1","dist.ori"="V03B_2","dist.des"="V03C_2","com.ori"="COM_O1","com.des"="COM_D1","crown.ori"="CAMB_O1","crown.des"="CAMB_D1","hour"="V03D","minute"="V03E","duration"="V03F","duration.range"="V03F_R","m1"="V03G","m2"="V03H","m3"="V03I","m.main"="V03G_R1","multimodality"="V03G_R4","ocupation"="V03N","fuel"="V03P","reason.not.work"="V03Q","pesaix"="PESAIX", "pesmos"="PESMOS","com.res"="COMARCA")
+#parking and antiquity are merged in an unique attribute but maybe Lidia want them disjoint
+
+desp18 <- desp18 %>% rename("id" = "TRAZA", "order" = "ORDRE" ,"reason"="V03A","mun.ori"="V03B_1","mun.des"="V03C_1","dist.ori"="V03B_2","dist.des"="V03C_2","com.ori"="COM_O1","com.des"="COM_D1","hour"="V03D","minute"="V03E","duration"="V03F","duration.range"="V03F_R","m1"="V03G","m2"="V03H","m3"="V03I","m.main"="V03G_R1","multimodality"="V03G_R4","ocupation"="V03L","fuel"="V03N","t.taxi"="V03O_1","t.car"="V03O_2","t.car.passanger"="V03O_3","t.moto"="V03O_4","t.moto.passanger"="V03O_5","t.bike"="V03O_6","reason.not.work"="V03Q","pesaix"="PESAIX", "pesmos"="PESMOS","com.res"="COMARCA3")
+names(desp18)
+table(desp18$com.res,useNA="always")
+```
+
+# 2022 es llegeix d'excel i té codis de municipi, no nom de municipi i això dona problemes per tractar-ho unificadament
+
+```{r}
+EMEF <- read.csv("emef_coord.csv")#llegeix el fitxer
+head(EMEF)
+# EMEF$mun.codi <- as.numeric(sapply(strsplit(EMEF$taz.emef,split="-"), `[[`, 1))# Em quedo amb la primera part
+
+EMEF$mun.codi <- (sapply(strsplit(EMEF$taz.emef,split="-"), `[[`, 1))# Em quedo amb la primera part
+ll <-which(EMEF$taz.emef %in% c("8019-1","8019-2","8019-3","8019-4","8019-5","8019-6","8019-7","8019-8","8019-9","8019-10"))
+EMEF[ll,]
+EMEF <- EMEF[-ll,]
+names(EMEF)
+head(EMEF)
+table(desp21$mun.ori,useNA="always")
+table(desp22$mun.ori,useNA="always")
+str(EMEF)
+str(desp21)
+
+desp22$mun.ori <- as.character(desp22$mun.ori)
+desp22$mun.des <- as.character(desp22$mun.des )
+desp22 <- left_join( desp22, EMEF[,c("mun.codi","mun.res")], by = c("mun.ori" = "mun.codi")) %>% data.frame()
+desp22 <- left_join( desp22, EMEF[,c("mun.codi","mun.res")], by = c("mun.des" = "mun.codi"))
+desp22$mun.ori <- factor(desp22$mun.res.x)
+desp22$mun.des <- factor(desp22$mun.res.y)
+desp22[,c("mun.res.x","mun.res.y")] <- NULL
+
+str(desp18[,c("mun.ori","mun.des","dist.ori","dist.des")])
+str(desp19[,c("mun.ori","mun.des","dist.ori","dist.des","crown.ori","crown.des")])
+str(desp20[,c("mun.ori","mun.des","dist.ori","dist.des","crown.ori","crown.des")])
+str(desp21[,c("mun.ori","mun.des","dist.ori","dist.des","crown.ori","crown.des")])
+str(desp22[,c("mun.ori","mun.des","dist.ori","dist.des","crown.ori","crown.des")])
+
+levels( desp18$dist.ori)
+levels( desp19$dist.ori)
+levels( desp20$dist.ori)
+levels( desp21$dist.ori)
+levels( desp22$dist.ori)
+levels( desp18$dist.des)
+levels( desp19$dist.des)
+levels( desp20$dist.des)
+levels( desp21$dist.des)
+levels( desp22$dist.des)
+
+
+head(desp22)
+desp18$dist.ori[is.na(desp18$dist.ori)] <-11
+desp18$dist.des[is.na(desp18$dist.des)] <-11
+desp18$dist.ori <-factor(desp18$dist.ori, labels=c(levels(desp21$dist.des)[1:10],"00"))
+desp18$dist.des <-factor(desp18$dist.des, labels=c(levels(desp21$dist.des)[1:10],"00"))
+table(desp18$dist.ori,useNA="always")
+
+desp19$dist.ori[is.na(desp19$dist.ori)] <-11
+desp19$dist.des[is.na(desp19$dist.des)] <-11
+desp20$dist.ori[is.na(desp20$dist.ori)] <-11
+desp20$dist.des[is.na(desp20$dist.des)] <-11
+desp21$dist.ori[is.na(desp21$dist.ori)] <-11
+desp21$dist.des[is.na(desp21$dist.des)] <-11
+desp22$dist.ori[is.na(desp22$dist.ori)] <-11
+desp22$dist.des[is.na(desp22$dist.des)] <-11
+
+levels(desp19$dist.des) <- c(levels(desp21$dist.des)[1:10],"00")
+levels(desp19$dist.ori) <- c(levels(desp21$dist.des)[1:10],"00")
+
+levels(desp20$dist.des) <- c(levels(desp21$dist.des)[1:10],"00")
+levels(desp20$dist.ori) <- c(levels(desp21$dist.des)[1:10],"00")
+
+levels(desp21$dist.des) <- c(levels(desp21$dist.des)[1:10],"00")
+levels(desp21$dist.ori) <- c(levels(desp21$dist.des)[1:10],"00")
+
+desp22$dist.ori[is.na(desp22$dist.ori)] <-11
+desp22$dist.des[is.na(desp22$dist.des)] <-11
+desp22$dist.ori <- factor( desp22$dist.ori, labels = c(levels(desp21$dist.des)[1:10], "00") )
+desp22$dist.des <- factor( desp22$dist.des, labels = c(levels(desp21$dist.des)[1:10], "00") )
+
+levels( desp18$dist.ori)
+levels( desp19$dist.ori)
+levels( desp20$dist.ori)
+levels( desp21$dist.ori)
+levels( desp22$dist.ori)
+levels( desp18$dist.des)
+levels( desp19$dist.des)
+levels( desp20$dist.des)
+levels( desp21$dist.des)
+levels( desp22$dist.des)
+
+levels( desp23$dist.ori)
+levels( desp23$dist.des)
+
+desp23$dist.ori <- factor( desp23$dist.ori, labels = c(levels(desp23$dist.des)[1:10], "00") )
+desp23$dist.des <- factor( desp23$dist.des, labels = c(levels(desp23$dist.des)[1:10], "00") )
+
+desp23$dist.ori[is.na(desp23$dist.ori)] <- "00"
+desp23$dist.des[is.na(desp23$dist.des)] <- "00"
+
+
+table(desp23$dist.ori, useNA="always")
+table(desp23$dist.des, useNA="always")
+
+summary(desp24)
+desp24$crown.ori <- factor(desp24$crown.ori,labels=c("BCN","ETM","AMB","RMB","Other","Other","Other"))
+desp24$crown.des <- factor(desp24$crown.des,labels=c("BCN","ETM","AMB","RMB","Other","Other","Other"))
+table( desp24$crown.ori, useNA="always")
+table( desp24$crown.des, useNA="always")
+```
+
+
+```{r}
+# Load crown.ori and crown.des to 2018 desp data
+names(desp18)
+des18aux <- left_join( desp18[,c("mun.ori","mun.des")],EMEF[,c("crowname","mun.res")], by = c("mun.ori" = "mun.res")) %>% data.frame()
+des18aux <- left_join( des18aux,EMEF[,c("crowname","mun.res")], by = c("mun.des" = "mun.res")) %>% data.frame()
+names(des18aux)
+tail(des18aux)
+desp18$crown.ori <- factor(des18aux$crowname.x, levels=c("BCN","ETM","AMB","RMB",""),labels=c("BCN","ETM","AMB","RMB","Other"))
+desp18$crown.des <- factor(des18aux$crowname.y, levels=c("BCN","ETM","AMB","RMB",""),labels=c("BCN","ETM","AMB","RMB","Other"))
+rm(list=c("des18aux"))
+
+levels(desp18$crown.ori);levels(desp18$crown.des)
+levels(desp19$crown.ori);levels(desp19$crown.des)
+levels(desp20$crown.ori);levels(desp20$crown.des)
+levels(desp21$crown.ori);levels(desp21$crown.des)
+levels(desp22$crown.ori);levels(desp22$crown.des)
+levels(desp23$crown.ori);levels(desp23$crown.des)
+
+levels(desp19$crown.ori) <- c("BCN","ETM","AMB","RMB","Other","Other","Other")
+levels(desp19$crown.des) <- c("BCN","ETM","AMB","RMB","Other","Other","Other")
+levels(desp20$crown.ori) <- c("BCN","ETM","AMB","RMB","Other","Other","Other")
+levels(desp20$crown.des) <- c("BCN","ETM","AMB","RMB","Other","Other","Other")
+levels(desp21$crown.ori) <- c("BCN","ETM","AMB","RMB","Other","Other","Other")
+levels(desp21$crown.des) <- c("BCN","ETM","AMB","RMB","Other","Other","Other")
+
+table(desp22$crown.ori, useNA="always")
+table(desp22$crown.des, useNA="always")
+desp22$crown.ori <- factor(desp22$crown.ori , labels=c("BCN","ETM","AMB","RMB","Other","Other"))
+desp22$crown.des <- factor(desp22$crown.des, labels = c("BCN","ETM","AMB","RMB","Other","Other","Other"))
+
+levels(desp23$crown.ori) <- c("BCN","ETM","AMB","RMB","Other","Other","Other")
+levels(desp23$crown.des) <- c("BCN","ETM","AMB","RMB","Other","Other","Other")
+
+
+```
+
+
+#### Filter and merge all years displacement core datasets:
+```{r}
+desp18 <- desp18 %>% mutate(year = 2018, .before = 1)
+desp19 <- desp19 %>% mutate(year = 2019, .before = 1)
+desp20 <- desp20 %>% mutate(year = 2020, .before = 1)
+desp21 <- desp21 %>% mutate(year = 2021, .before = 1)
+desp22 <- desp22 %>% mutate(year = 2022, .before = 1)
+desp23 <- desp23 %>% mutate(year = 2023, .before = 1)
+desp24 <- desp24 %>% mutate(year = 2024, .before = 1)
+
+desp24$com.res <- factor(desp24$com.res)
+table(desp22$com.res, useNA="always")
+desp19$parking <- ifelse(!is.na(desp19$V03J), desp19$V03J, ifelse(!is.na(desp19$V03K), desp19$V03K, desp19$V03L))
+desp19$parking <- coalesce(desp19$V03J, desp19$V03K, desp19$V03L)
+desp19$antiquity <- ifelse(!is.na(desp19$V03O1), desp19$V03O1, ifelse(!is.na(desp19$V03O2), desp19$V03O2, desp19$V03O3))
+desp19$antiquity <- coalesce(desp19$V03O1,desp19$V03O2,desp19$V03O3)
+
+desp18$parking <- ifelse(!is.na(desp18$V03J), desp18$V03J, desp18$V03K)
+desp18$parking <- coalesce(desp18$V03J, desp18$V03K)
+desp18$antiquity <- ifelse(!is.na(desp18$V03M1), desp18$V03M1, desp18$V03M2)
+desp18$antiquity <- coalesce(desp18$V03M1,desp18$V03M2)
+
+# desp18$dist.ori <- factor(desp18$dist.ori, levels = sort(unique(desp18$dist.ori)), labels = levels(desp19$dist.des)[0:10])
+# desp18$dist.des <- factor(desp18$dist.des, levels = sort(unique(desp18$dist.des)), labels = levels(desp19$dist.des)[0:10])
+```
+
+#### Merge all desp dataframes and we erase "Professional individuals"
+```{r}
+Selected_questions <- c("id" ,"order","TIPOL", "year" ,"reason","mun.ori","mun.des","dist.ori","dist.des","com.ori","com.des","crown.ori","crown.des","hour","minute","duration","duration.range","m1","m2","m3","m.main","multimodality","parking","antiquity","ocupation","fuel","t.taxi","t.car","t.car.passanger","t.moto","t.moto.passanger","t.bike","t.scooter","reason.not.work", "pesaix","dist.orto","com.res")
+
+# Just keep the Selected_questions
+desp18 <- select(desp18,any_of(Selected_questions))
+desp19 <- select(desp19,any_of(Selected_questions))
+desp20 <- select(desp20,any_of(Selected_questions))
+desp21 <- select(desp21,any_of(Selected_questions))
+desp22 <- select(desp22,any_of(Selected_questions))
+desp23 <- select(desp23,any_of(Selected_questions))
+desp24 <- select(desp24,any_of(Selected_questions))
+```
+
+
+```{r}
+names(desp22)
+names(desp22)[c(3,5:34,36)]
+colsasfactor <- names(desp22)[c(3,5:34,36)]
+desp22 <- desp22 %>% mutate(across(colsasfactor,factor)) %>% data.frame()
+
+
+names(desp24)
+names(desp24)[c(3,5:29,31,32)]
+colsasfactor <- names(desp24)[c(3,5:29,31,32)]
+desp24 <- desp24 %>% mutate(across(colsasfactor,factor)) %>% data.frame()
+```
+
+
+```{r}
+desp <- bind_rows(desp18, desp19, desp20, desp21, desp22, desp23, desp24)
+desp <- subset(desp, TIPOL != "Individu professional")
+desp <- subset(desp, TIPOL != "2")
+
+desp$TIPOL <- NULL
+table(desp$com.res,desp$year,useNA="always")
+#Substitució de Horta per Horta guinardó.
+levels(desp$dist.ori)[levels(desp$dist.ori) == "Horta"] <- "Horta-Guinardó"
+
+table(desp$crown.ori,desp$year, useNA="always")
+table(desp$order,desp$year, useNA="always")
+colSums(table(desp$order,desp$year, useNA="always"))
+
+table(desp$com.res, useNA="always")
+
+desp$com.res <- factor(desp$com.res)
+levels(desp$com.res)
+desp$com.res <- fct_collapse( desp$com.res,
+              "Alt Penedès" = c("Alt Penedès","3") ,
+              "Baix Llobregat" = c("Alt Empordà","11"),
+              "Barcelonès" = c("Barcelonès","13"),
+              "Garraf" = c("Garraf","17"),
+              "Maresme" = c("Maresme","21"),
+              "Vallès Occ." = c("Vallès Occidental","41"),
+              "Vallès Or." = c("Vallès Oriental","42"),
+              "Anoia" = c("Anoia", "6","Anoia STI"),
+              "Berguedà" = c("Berguedà", "14","Berguedà STI"),
+              "Bages" = c("Bages","7","Bages STI"),
+              "Baix Penedès" = c("Baix Penedès","12","Baix Penedès STI"),
+              "Moianès" = c("Moianès","22","Moianès STI"),
+              "Osona" = c("Osona","25","Osona STI"),
+              "La Selva" = c("La Selva","Selva","35","La Selva STI"),
+              other_level = "Other")
+
+table(desp$com.res,desp$year,useNA="always")
+```
+
+
+#### Change labels that differ in different years
+
+```{r}
+names(desp)
+summary(desp)
+levels(desp$reason)
+desp$reason <- fct_collapse(desp$reason,
+                            "HBC" = c("Visita a família o amistats", "Visita a família o amistats (sense quedar-se a dormir)","Visitar amic o familiar (sense quedar-se a dormir)", "Visitar amiga o familiar (sense quedar-se a dormir)","Metge,CAP,proves diagnòstiques, recuperacions","Metge, CAP, proves diagnòstiques, recuperacions, hospital (visita pròpia)","Compres ocasionals o no quotidianes","Recollir paquests de comerç-e", "No sap, no contesta","6","7","8","17","99","NS/NC"),
+                            "HBA" = c("Tenir cura d'alguna persona (gent gran, nens...)", "Acompanyar/recollir/buscar a altres persones","9","16","18","Acompanyar o recollir persones menors d'edat","Tenir cura d'alguna persona (gent gran, nens/es...)","Acompanyar o recollir persones majors d'edat"),
+                            "HBO" = c("Oci, diversió, espectacles, cinemes, restaurants, esports", "Sense destinació fixe, passejar, treure el gos","Compres quotidianes",  "Sense destinació fixe, passejar","Segona residència","Altres motius","5","12","14","15","98"),
+                            "HBS" = c("Estudis","L'escola, universitat","4"),
+                            "NHBH" = c("Domicili","Casa,domicili","1"),
+                            "NHBO" = c("Altres llocs on dormir (hotel, hospital, casa d'amics, etc.)" , "Gestions personals","Àpat no d'oci (dinar...)","Dinar, sopar, bar, restaurant (no oci)","Tornada hotel o domicili d'altri / hospitalització","2","11","13"),
+                            "NHBW" = c("Gestions de treball (inclou desplaçaments en horari laboral)","Gestions de treball (fora del lloc/seu habitual on treballa)","10"),
+                            "HBW" = c("Anar a treballar","La feina","3"))
+levels(desp$reason)
+```
+
+
+
+```{r}
+table(desp$hour,desp$year,useNA="always")
+desp$hour[desp$hour=="NS/NC"] <-"99"
+desp$hour <- factor(desp$hour)
+desp$hour<-as.numeric(levels(desp$hour))[desp$hour]
+
+table(desp$minute,desp$year,useNA="always")
+desp$minute[(desp$minute %in% c("NS/NC","99"))|(is.na(desp$minute))] <-"0"
+desp$minute <- factor(desp$minute)
+desp$minute<-as.numeric(levels(desp$minute))[desp$minute]
+
+table(desp$duration,desp$year,useNA="always")
+levels(desp$duration)
+desp$duration[(desp$duration %in% c("NS/NC",">= 998 minuts","998","999")) |(is.na(desp$duration))] <-"900"
+desp$duration <- factor(desp$duration)
+desp$duration<-as.numeric(levels(desp$duration))[desp$duration]
+```
+
+AQUI 13DES25
+
+```{r}
+table(desp$reason,desp$year,useNA="always")
+desp$state <- fct_collapse(desp$reason,
+                     "H"=c("NHBH"),
+                     "O"=c("NHBO", "HBO"),
+                     "W"=c("NHBW","HBW"),
+                     "C"=c("HBC"),
+                     "A"=c("HBA"),
+                     "S"=c("HBS"))
+levels(desp$state)
+table(desp$state,desp$year,useNA="always")
+levels(desp$reason.not.work)
+table(desp$reason.not.work, desp$state, useNA="always")
+desp$reason.not.work <- fct_collapse(desp$reason.not.work,
+                     "telework"=c("Sí, treballa a casa", "Sí, treballa/estudia a casa","1"),
+                     "holidays"=c("Sí, tenia festa o estava de vacances","2"),
+                     "parttimejob"=c("Només anava a treballar unes hores", "Només va a treballar unes hores, treballo dies puntuals i ahir no","4"),
+                     "other"=c("NS/NC", "Altres","98","99","Venia de treballar","No, no és correcte","5","97","Tancament sectorial per la covid'19","No treballa actualment (aturat o jubilat)","Està en ERTO total o parcial","6" ),
+                     "disease"=c("Sí, estava de baixa, estava malalt/a","Sí, estava de baixa","Confinament per la covid'19","3","Sí, estava de baixa, estava malalt/a, permís maternitat/paternitat" ))
+
+table(desp$reason.not.work,useNA="always")
+desp$reason.not.work[is.na(desp$reason.not.work)] <- "other"
+table(desp$state, useNA="always")
+
+table(desp$reason.not.work,desp$year,useNA="always")
+# desp[ll,]
+```
+
+
+```{r}
+#Simplifiquem els modes a desp
+levels(desp$m.main)
+ll <- which(desp$year=="2024")
+sdesp <- desp[ll,]
+rdesp <- desp[-ll,]
+rdesp$mode <- fct_collapse(rdesp$m.main,
+                          "TW"=c("Peu <= 5 minuts" , "Peu >5 minuts" , "0","1","18"),
+                          "TP"=c("Autobús","Metro", "Tramvia" ,"FGC","Rodalies Renfe","Altres mitjans públics","Autobús escolar","Tren regional","2","3","4","5","6","7","8","10","22","Autocar", "Autobús empresa","9","Autobús TMB","Altres autobús"),
+                          "TC"=c("Ciclomotor com a conductor","Ciclomotor com a acompanyant","Furgoneta","Camió","Cotxe com a conductor","Cotxe com a acompanyant","Moto com a conductor","Moto com a acompanyant","Furgoneta/camió","Altres vehicles privats","Taxi" ,"11","12","13","14","15","16","20","21","23","24","25","98","Cotxe com a conductora","Ciclomotor com a conductora","Moto com a conductora"),
+                          "TE"=c("NS/NC","19","99"),
+                          "TK"=c("Altres no motoritzats","Bicicleta","17"))
+
+
+sdesp$mode <- fct_collapse(sdesp$m.main,
+                          "TW"=c("Peu <= 5 minuts" , "Peu >5 minuts" , "0","1","18"),
+                          "TP"=c("Autobús","Metro", "Tramvia" ,"FGC","Rodalies Renfe","Altres mitjans públics","Autobús escolar","Tren regional","2","3","4","5","6","7","8","10","Autocar", "Autobús empresa","9","Autobús TMB","Altres autobús","23","24"),
+                          "TC"=c("Ciclomotor com a conductor","Ciclomotor com a acompanyant","Furgoneta","Camió","Cotxe com a conductor","Cotxe com a acompanyant","Moto com a conductor","Moto com a acompanyant","Furgoneta/camió","Altres vehicles privats","Taxi" ,"11","12","13","14","15","16","20","21","22","25","98","Cotxe com a conductora","Ciclomotor com a conductora","Moto com a conductora"),
+                          "TE"=c("NS/NC","19","99"),
+                          "TK"=c("Altres no motoritzats","Bicicleta","17"))
+desp <- rbind(rdesp,sdesp)
+levels(desp$mode)
+```
+
+
+```{r}
+#Funció que simplifica els modes (A l'abecedari basic)
+#Convindria crear una funció que fes el mateix però amb l'abecedàri desgranat
+modify_mX <- function(x) {
+  x <- fct_collapse(x,
+                    "TW"=c("Caminant","1", 
+    "Cadira de rodes, scooter o vehicles per persones amb dificultats de mobilitat","18"),
+                    "TP"=c("Autobús","Metro", "Tramvia" ,"Ferrocarrils Generalitat (FGC)","Ferrocarrils Generalitat (F.G.C.)", "Rodalies Renfe",
+                           "Altres mitjans públics","Autobús escolar", 
+                           "Renfe regional/mitja distància", "3","5","6","7","8","9","10","23","24","Autocar", "Autobús empresa", "Altres mitjans",
+                           "Cap mitjà més","2","4","Autocar (excursions privades)", "Autobús TMB","Altres autobús (urbà no TMB i/o interurbà)"),
+                     "TC"=c("Ciclomotor com a conductor","Ciclomotor com a acompanyant","Furgoneta","Camió","Cotxe com a conductor","Cotxe com a acompanyant","Moto com a conductor","Moto com a acompanyant","Furgoneta/camió", 
+                          "Altres vehicles privats","Altres mitjans privats", "Taxi",
+                          "Taxi (Uber, Cabify)" , "11", "12", "13", "14", "15", "16", "20", "21","22", "25","Cotxe com a conductora","Ciclomotor com a conductora","Moto com a conductora","98"),
+                     "TK"=c("Bicicleta","17"),
+                     "TE"=c("Altres no motoritzats","Patinet", "Segway o altres ginys" , "Patinet, segway o altres ginys","19","NS/NC","98","99"))
+  return(x)
+}
+modify_dmX <- function(x) {
+  x <- fct_collapse(x,
+                    "TW"=c("Caminant","Peu <= 5 minuts" , "Peu >5 minuts","1"),
+                    "TK"=c("Bicicleta","17"),
+                    "TT" =c("FGC","Ferrocarrils Generalitat (FGC)","Ferrocarrils Generalitat (F.G.C.)","Rodalies Renfe","Renfe regional/mitja distància", "Tren regional","8","9","10"),
+                    "TB"=c("Autobús","Autobús escolar","Autocar", "Autobús empresa","3","4","5","11","23","2","Autocar (excursions privades)", "Autobús TMB","Altres autobús (urbà no TMB i/o interurbà)","Altres autobús" ),
+                    "TM"=c("Metro", "Tramvia" ,"Altres mitjans públics","6","7"),
+                     "TC"=c("Ciclomotor com a conductor","Ciclomotor com a acompanyant","Furgoneta","Camió","Cotxe com a conductor","Cotxe com a acompanyant","Moto com a conductor","Moto com a acompanyant","Furgoneta/camió","Altres vehicles privats","Altres mitjans privats"  ,"Taxi","Taxi (Uber, Cabify)","14","15","16","17","12","13","20","21","22","24","25","Cotxe com a conductora","Ciclomotor com a conductora","Moto com a conductora"),
+                     "TA"=c("Altres no motoritzats","NS/NC", "Cadira de rodes, scooter o vehicles per persones amb dificultats de mobilitat", "Altres mitjans","Cap mitjà més","18","98","99","0"),
+                    "TE" = c("Patinet" , "Segway o altres ginys" , "Patinet, segway o altres ginys","19"))
+  return(x)
+}
+#Aqui igual, caldrà crear les columnes dm1.mod i tal amb l'abecedàri desgranat
+```
+
+
+```{r}
+desp$m1.mod <- modify_mX(desp$m1)
+table(desp$m1.mod,useNA="always")
+desp$m2.mod <- modify_mX(desp$m2)
+table(desp$m2.mod,useNA="always")
+desp$m3.mod <- modify_mX(desp$m3)
+table(desp$m3.mod,useNA="always")
+
+desp$dmode <- modify_dmX(desp$m.main)
+table(desp$dmode,useNA="always")
+
+desp$dm1.mod <- modify_dmX(desp$m1)
+table(desp$dm1.mod,useNA="always")
+desp$dm2.mod <- modify_dmX(desp$m2)
+table(desp$dm2.mod,useNA="always")
+desp$dm3.mod <- modify_dmX(desp$m3)
+table(desp$dm3.mod,useNA="always")
+
+table(desp$mode,useNA="always")
+desp$m1 <- NULL
+desp$m2 <- NULL
+desp$m3 <- NULL
+
+desp$m.seq <- apply(desp[, c("m1.mod", "m2.mod", "m3.mod")], 1, function(x) {
+  paste(x[!is.na(x)], collapse = ":")
+})
+table(desp$dmode,useNA="always")
+desp$dm.seq <- apply(desp[, c("dm1.mod", "dm2.mod", "dm3.mod")], 1, function(x) {
+  paste(x[!is.na(x)], collapse = ":")
+})
+
+summary(desp)
+table(desp$mode, useNA="always")
+```
+
+Crowns/Counties
+
+```{r}
+table(desp$crown.ori, useNA="always")
+desp$crown.ori <- fct_collapse( desp$crown.ori,
+              "BCN" = c("BCN","1") ,
+              "ETM" = c("Resta 1a corona","2","ETM"),
+              "AMB" = c("Resta AMB","3","AMB"),
+              "RMB" = c("Resta RMB","4","RMB"),
+              other_level = "Other")
+
+desp$crown.des <- fct_collapse( desp$crown.des,
+              "BCN" = c("BCN","1") ,
+              "ETM" = c("Resta 1a corona","2","ETM"),
+              "AMB" = c("Resta AMB","3","AMB"),
+              "RMB" = c("Resta RMB","4","RMB"),
+              other_level = "Other")
+
+table(desp$crown.ori, useNA="always")
+table(desp$crown.des, useNA="always")
+
+# No va bé per 2024 14 des 2025
+```
+
+
+```{r}
+table(desp$com.ori, desp$year,useNA="always")
+ll <- which(desp$year=="2024")
+rdesp <- desp[-ll,]
+sdesp <- desp[ll,]
+rdesp$com.ori <- fct_collapse( rdesp$com.ori,
+              "Alt Penedès" = c("Alt Penedès","3") ,
+              "Baix Llobregat" = c("Alt Empordà","11"),
+              "Barcelonès" = c("Barcelonès","13"),
+              "Garraf" = c("Garraf","17"),
+              "Maresme" = c("Maresme","21"),
+              "Vallès Occ." = c("Vallès Occidental","41"),
+              "Vallès Or." = c("Vallès Oriental","42"),
+              "Anoia" = c("Anoia", "6"),
+              "Berguedà" = c("Berguedà", "14"),
+              "Bages" = c("Bages","7"),
+              "Baix Penedès" = c("Baix Penedès","12"),
+              "Moianès" = c("Moianès","22"),
+              "Osona" = c("Osona","25"),
+              "La Selva" = c("La Selva","Selva","35"),
+              other_level = "Other")
+
+rdesp$com.des <- fct_collapse( rdesp$com.des,
+              "Alt Penedès" = c("Alt Penedès","3") ,
+              "Baix Llobregat" = c("Alt Empordà","11"),
+              "Barcelonès" = c("Barcelonès","13"),
+              "Garraf" = c("Garraf","17"),
+              "Maresme" = c("Maresme","21"),
+              "Vallès Occ." = c("Vallès Occidental","41"),
+              "Vallès Or." = c("Vallès Oriental","42"),
+              "Anoia" = c("Anoia", "6"),
+              "Berguedà" = c("Berguedà", "14"),
+              "Bages" = c("Bages","7"),
+              "Baix Penedès" = c("Baix Penedès","12"),
+              "Moianès" = c("Moianès","22"),
+              "Osona" = c("Osona","25"),
+              "La Selva" = c("La Selva","Selva","35"),
+              other_level = "Other")   
+
+# Retocar
+sdesp$com.ori <- fct_collapse( sdesp$com.ori,
+              "Alt Penedès" = c("Alt Penedès","1") ,
+              "Baix Llobregat" = c("Alt Empordà","2"),
+              "Barcelonès" = c("Barcelonès","3"),
+              "Garraf" = c("Garraf","4"),
+              "Maresme" = c("Maresme","5"),
+              "Vallès Occ." = c("Vallès Occidental","6"),
+              "Vallès Or." = c("Vallès Oriental","7"),
+              "Anoia" = c("Anoia", "8"),
+              "Berguedà" = c("Berguedà", "9"),
+              "Bages" = c("Bages","10"),
+              "Moianès" = c("Moianès","11"),
+              "Osona" = c("Osona","12"),
+              other_level = c("Other"))
+
+sdesp$com.des <- fct_collapse( sdesp$com.des,
+              "Alt Penedès" = c("Alt Penedès","1") ,
+              "Baix Llobregat" = c("Alt Empordà","2"),
+              "Barcelonès" = c("Barcelonès","3"),
+              "Garraf" = c("Garraf","4"),
+              "Maresme" = c("Maresme","5"),
+              "Vallès Occ." = c("Vallès Occidental","6"),
+              "Vallès Or." = c("Vallès Oriental","7"),
+              "Anoia" = c("Anoia", "8"),
+              "Berguedà" = c("Berguedà", "9"),
+              "Bages" = c("Bages","10"),
+              "Moianès" = c("Moianès","11"),
+              "Osona" = c("Osona","12"),
+              other_level = c("Other"))
+
+levels(desp$com.res)
+
+desp <-rbind(rdesp,sdesp)
+desp$com.res <- fct_collapse( desp$com.res,
+              "Alt Penedès" = c("Alt Penedès","3") ,
+              "Baix Llobregat" = c("Alt Empordà","11"),
+              "Barcelonès" = c("Barcelonès","13"),
+              "Garraf" = c("Garraf","17"),
+              "Maresme" = c("Maresme","21"),
+              "Vallès Occ." = c("Vallès Occidental","41"),
+              "Vallès Or." = c("Vallès Oriental","42"),
+              "Anoia" = c("Anoia", "6"),
+              "Berguedà" = c("Berguedà", "14"),
+              "Bages" = c("Bages","7"),
+              "Baix Penedès" = c("Baix Penedès","12"),
+              "Moianès" = c("Moianès","22"),
+              "Osona" = c("Osona","25"),
+              "La Selva" = c("La Selva","Selva","35"),
+              other_level = "Other")
+
+ll <- which( desp$year==2018)
+table(desp$com.ori[ll],useNA="always")
+table(desp$com.ori,useNA="always")
+
+ll <- which( desp$year==2018)
+table(desp$crown.ori[ll],useNA="always")
+table(desp$crown.ori,useNA="always")
+
+# A 2018 cal carregar la corona ori i des
+summary(desp)
+```
+
+
+```{r}
+levels(desp$parking)
+desp$parking.pay <- fct_collapse(desp$parking,
+                          "pay"=c("Al carrer: pagant (zona blava, verda, altra color)","Aparcament d’intercanvi de pagament (estació de tren o d’autobusos)","Aparcament de pagament reservat en destinació al carrer/subterrani","Pàrking de pagament (per hores o minuts) fora de calçada","Càrrega i descàrrega de pagament per a vehicles de mercaderies","Altres llocs pagant (ESPECIFICAR)","1","3","5","7","8","97","Aparcament d'intercanvi de pagament (estació de tren o d’autobusos)","Aparcament de pagament reservat en destinació al carrer o subterrani","Pàrquing de pagament (per hores o minuts) fora de calçada","Altres llocs pagant"),
+                          "not.pay"=c("Al carrer: sense pagar o lliure (plaça indicada, vorera, etc.)" ,"Aparcament d’intercanvi gratuït (estació de tren o d’autobusos)" ,"Aparcament de gratuït reservat en destinació al carrer/subterrani","Aparcament en propietat, lloguer o concessió","No aparca, només para un moment","Càrrega i descàrrega de gratuït per a vehicles de mercaderies","Altres llocs sense pagar (ESPECIFICAR)" ,"No ho sap, no contesta","2","4","6","9","98","99","Aparcament d'intercanvi gratuït (estació de tren o d’autobusos)","Aparcament gratuït reservat en destinació al carrer o subterrani","Altres llocs sense pagar"))
+
+table(desp$parking.pay,desp$year,useNA="always")
+
+table(desp$antiquity,desp$year,useNA="always")
+desp$antiquity <- factor(desp$antiquity)
+levels(desp$antiquity)
+desp$antiquity <- fct_collapse( desp$antiquity,
+                                "1Y or less"=c("0","1"), other_level="More 1Y")
+levels(desp$antiquity)
+
+table(desp$ocupation,desp$year,useNA="always")
+ll <- which(desp$ocupation %in% c("99","NS/NC"))
+desp$ocupation[ll] <- NA
+desp$ocupation <- factor(desp$ocupation)
+
+table(desp$t.taxi,desp$year,useNA="always")
+levels(desp$t.taxi)
+desp$t.taxi <- fct_collapse(desp$t.taxi,
+                            "taxi" = c("Taxi amb llicència munipal/AMB/Gencat","Taxi amb llicència municipal/AMB/GenCat","1"),
+                            "VTC"=c("VTC (Uber/Cabify)", "VTC (Uber, Cabify...)","2","VTC (Uber/Cabify/Bolt)"),
+                            "other" = c("Dels dos tipus","NS/NC","3","99"))
+levels(desp$t.car)
+desp$t.car <- fct_collapse(desp$t.car,
+                            "private" = c("Cotxe privat","1"),
+                            "shared"=c("Cotxe compartit (Blablacar, Carsharing,...)", "Cotxe compartit (BlaBlaCar, Carsharing)","Cotxe compartit  (Bla Bla Car,  Carsharing...)","2","3","Cotxe compartit"),other_level="Other")
+table(desp$t.car,useNA="always")
+
+table(desp$t.car.passanger,useNA="always")
+desp$t.car.passanger <- fct_collapse(desp$t.car.passanger,
+                            "private" = c("Cotxe privat","1"),
+                            "shared"=c("Cotxe compartit (Blablacar, Carsharing,...)", "Cotxe compartit (BlaBlaCar, Carsharing)","Cotxe compartit  (Bla Bla Car,  Carsharing...)","2","3","Cotxe compartit"),other_level="Other")
+table(desp$t.car.passanger,useNA="always")
+
+levels(desp$t.moto)
+desp$t.moto <- fct_collapse(desp$t.moto,
+                            "private" = c("Moto privada", "Moto/ciclomotor privada","1"),
+                            "shared"=c("Moto compartida (Ecooltra)","Moto/ciclomotor compartida  (Ecooltra, Scoot...)","Moto/ciclomotor compartida (Ecooltra,Scoot...)" ,"2","3","Moto/ciclomotor compartida"), other_level = "Other")
+table(desp$t.moto,useNA="always")
+
+levels(desp$t.moto.passanger)
+desp$t.moto.passanger <- fct_collapse(desp$t.moto.passanger,
+                            "private" = c("Moto privada", "Moto/ciclomotor privada","1"),
+                            "shared"=c("Moto compartida (Ecooltra)","Moto/ciclomotor compartida  (Ecooltra, Scoot...)","Moto/ciclomotor compartida (Ecooltra,Scoot...)","2","3","Moto/ciclomotor compartida"), other_level= "Other")
+
+levels(desp$t.scooter)
+desp$t.scooter <- fct_collapse(desp$t.scooter,
+                            "private" = c("Patinet o giny privat","1"),
+                            "shared"=c("Patinet o giny compartit","2","3","99"),other_level="Other")
+
+levels(desp$t.bike)
+desp$t.bike <- fct_collapse(desp$t.bike,
+                            "private" = c("Bicicleta privada","1","2","Bicicleta mecànica privada","Bicicleta elèctrica privada"),
+                            "shared"=c("Bicicleta compartida (Donkey Repluc)","Bicicleta compartida (DonkeyRepublic...)","Bicing","3","4","5","6","7","Bicicleta compartida","Bicing mecànic","Bicing elèctric","E-Bicibox","AmbBici"), other_level = "Other")
+
+desp$parking <- NULL
+
+summary(desp$duration.range)
+ll <- which(desp$year=="2024")
+desp$duration.range[ll] <- factor(cut(desp$duration[ll],breaks=c(0,5,15,30,1000)),labels=c("1","2","3","4"))
+table(desp$duration.range,desp$year,useNA="always")
+desp$duration.range <- fct_collapse(desp$duration.range,
+               "<=5min"=c("Fins a 5'","1"),
+              "6-15min"=c("De 6' a 15'","2"),
+              "16-30min"=c("De 16' a 30'","3"),
+              ">30min" = c("Més de 30'","4"), other_level=NA)
+table(desp$multimodality,useNA="always")
+desp$multimodality <- fct_collapse(desp$multimodality,
+               "Unimodal"=c("Unimodal","1"),
+               "Bimodal"=c("Bimodal","2"),
+               other_level = "More")
+
+table(desp$fuel,useNA="always")
+levels(desp$fuel)
+desp$fuel <- fct_collapse(desp$fuel,
+               "Diesel"=c("Gasòil/dièsel","1"),
+               "Gas"=c("Benzina/sense plom 95/sense plom 98","2","GLP (Gas Liquat)","GNC (Gas Natural Comprimit)"),
+               "Hibrid/Electric" = c("Híbrid","Elèctric","3","4"),
+               other_level = "Other")
+summary(desp)
+```
+
+#### Add period of day for each row
+
+```{r}
+table(desp$hour,useNA="always")
+desp<- desp %>%
+  mutate(period = case_when(
+    desp$hour %in% c(0,1,2,3,4,5,6,20:31,99) ~ 0,
+    desp$hour %in% c(7,8,9, 10,11,12) ~ 1,
+    desp$hour %in% c(13,14,15,16) ~ 2,
+    desp$hour %in% c(17,18,19) ~ 3
+  ))
+desp$period[is.na(desp$period)] <- 0
+desp$period <- factor(desp$period, levels=0:3, labels=c("Other","MPk","Mid","APk"))
+desp$period <- factor(desp$period, levels=c("MPk","Mid","APk","Other"))
+summary(desp)
+
+table(desp$com.ori,desp$year,useNA="always")
+```
+
+Revisat fins aquí 14 des 2025
+
+## Posar WH per totes les observacions id-year tals que desp$reason.not.work sigui telework entre les 8 i les 16h
+
+```{r}
+table(desp$state, desp$year, useNA="always")
+levels(desp$state) <- c(levels(desp$state),"WH")
+lllevels <- levels(desp$state)
+desp$state <- as.character(desp$state)
+llWfH <- which(desp$reason.not.work=="telework");length(llWfH)
+str(desp$state)
+names(desp)
+desp$idyear <- factor(paste0(desp$id,'-',desp$year))
+desp[llWfH,]
+
+desp$state[llWfH] <- ifelse((desp$state[llWfH]=="H") &(desp$hour[llWfH] < 17) &(desp$hour[llWfH] > 7),"WH",desp$state[llWfH])
+# for ( i in 1:length(llWfH)){
+#   desp$state[i] <- ifelse((desp$state[i]=="H") &(desp$hour[i] < 17) &(desp$hour[i] > 7),"WH",desp$state[i])
+# }
+desp$state <- factor(desp$state, levels=lllevels)
+desp[desp$idyear =="3850-2018",]
+```
+
+#### Add EMEF code to each city   
+
+```{r}
+names(desp)
+table(desp$mun.ori,desp$year,useNA="always")
+levels(desp$mun.ori)
+EMEF <- read.csv("emef_coord.csv")#llegeix el fitxer
+head(EMEF,150)
+tail(EMEF)
+#desp <- merge(desp, EMEF[,c("mun.res", "taz.emef", "mun.codi")], by.x="mun.ori", by.y="mun.codi", all.x=TRUE)
+desp <- merge(desp, EMEF[,c("mun.res", "taz.emef")], by.x="mun.ori", by.y="mun.res", all.x=TRUE) #Es crea una nova columna taz.emef
+#desp <- merge(desp, EMEF[,c("mun.res", "taz.emef", "mun.codi")], by.x="mun.des", by.y="mun.codi", all.x=TRUE)
+desp <- merge(desp, EMEF[,c("mun.res", "taz.emef")], by.x="mun.des", by.y="mun.res", all.x=TRUE) #Per no sobreescriure, es creen les columnes taz.emef.x (emef origen) i taz.emef.y(desti)
+head(desp,50)  # Els municipis
+
+names(desp)
+names(desp)[46:47] <- c("taz.emef.ori","taz.emef.des")
+```
+
+Fins aquí 24 des 2024
+
+```{r}
+head(desp)
+desp <-merge(desp, EMEF[,c("mun.res", "taz.emef")], by.x="dist.ori", by.y="mun.res", all.x=TRUE)#Com que ara no existeix cap taz.emef es crea taz.emef amb NA a tots els municipis que no siguin barcelona i els codis corectes dels districtes.
+
+
+#Omple els forats de taz.emef amb els codis
+desp$taz.emef.ori <- ifelse(!is.na(desp$taz.emef), desp$taz.emef, desp$taz.emef.ori)
+desp$taz.emef <- NULL
+desp <-merge(desp, EMEF[,c("mun.res", "taz.emef")], by.x="dist.des", by.y="mun.res", all.x=TRUE)
+desp$taz.emef.des <- ifelse(!is.na(desp$taz.emef), desp$taz.emef, desp$taz.emef.des)
+desp$taz.emef <- NULL
+
+# desp$taz.emef.x <- as.factor(desp$taz.emef.x)
+# desp$taz.emef.y <- as.factor(desp$taz.emef.y)
+# names(desp)[names(desp) == "taz.emef.x"] <- "taz.emef.ori"
+# names(desp)[names(desp) == "taz.emef.y"] <- "taz.emef.des"
+summary(desp)
+names(desp)
+levels(desp$taz.emef.ori)
+head(desp)
+
+levels(desp$mun.ori) <- c(levels(desp$mun.ori),"00")
+levels(desp$mun.des) <- c(levels(desp$mun.des),"00")
+
+# Posar mun.ori i mun.des a Barcelona per tots els registres del 2023 i 24 amb districtes diferent a 00 i NA 
+ll23 <- which((desp$year=="2023")&(!is.na(desp$dist.ori))&(!(desp$dist.ori=="00")));length(ll23)
+desp$mun.ori[ll23] <-"Barcelona"
+
+ll23 <- which((desp$year=="2023")&((desp$dist.ori=="00")));length(ll23)
+desp$mun.ori[ll23] <-"00"
+
+ll23 <- which((desp$year=="2023")&(!is.na(desp$dist.des))&(!(desp$dist.des=="00")));length(ll23)
+desp$mun.des[ll23] <-"Barcelona"
+
+ll23 <- which((desp$year=="2023")&((desp$dist.des=="00")));length(ll23)
+desp$mun.des[ll23] <-"00"
+#desp[ll23,]
+names(desp)
+```
+
+#### Compute the residence municiple for each individual
+
+
+```{r}
+desp$mun.res <- NA
+desp$dist.res <- NA
+
+ll<-which((desp$reason %in% c("HBW","HBO","HBC","HBS","HBA"))&(desp$order==1))
+desp$mun.res[ll] <-as.character(desp$mun.ori[ll])
+desp$dist.res[ll] <- as.character(desp$dist.ori[ll])
+
+#we try to improve the municipality of residence
+ll<-which(desp$reason=="NHBH")
+desp$mun.res[ll] <-as.character(desp$mun.des[ll])
+desp$dist.res[ll] <- as.character(desp$dist.des[ll])
+
+ll <- which(desp$year=="2024")
+table(desp$com.res,desp$year,useNA="always")
+desp$mun.res[ll] <- desp$com.res[ll]
+desp$dist.res[ll] <- "00"
+```
+
+
+```{r}
+# ll23 <- which(desp$year=="2023");length(ll23)
+# ll24 <- which(desp$year=="2024");length(ll24)
+# #desp[ll23,]
+# table(desp$dist.res, desp$year, useNA="always")
+# table(desp$mun.res, desp$year, useNA="always")
+# desp$mun.res[ -ll24 ]<- ave(desp$mun.res[ -ll24 ], desp$idyear[ -ll24 ], FUN = function(x) ifelse(is.na(x), x[!is.na(x)][1], x))
+# desp$dist.res[ -ll24 ] <- ave(desp$dist.res[ -ll24 ], desp$idyear[ -ll24 ], FUN = function(x) ifelse(is.na(x), x[!is.na(x)][1], x))
+# head(desp)
+# 
+# ll23 <- which(desp$year=="2023");length(ll23)
+# desp[ll23,]
+# desp
+
+#Fem un pro
+desp <-merge(desp, EMEF[,c("mun.res", "taz.emef")], by="mun.res", all.x=TRUE)
+names(desp)[names(desp) == "taz.emef"] <- "taz.emef.res"
+desp <-merge(desp, EMEF[,c("mun.res", "taz.emef")], by.x="dist.res", by.y="mun.res", all.x=TRUE)
+
+desp$taz.emef.res <- ifelse(!is.na(desp$taz.emef), desp$taz.emef, desp$taz.emef.res)
+desp$taz.emef <- NULL
+
+desp$taz.emef.res <- as.factor(desp$taz.emef.res)
+
+
+desp <- merge(desp, EMEF[,c("mun.res", "Longitude")], by="mun.res", all.x=TRUE)
+desp <- merge(desp, EMEF[,c("mun.res", "Latitude")], by="mun.res", all.x=TRUE)
+desp <- arrange(desp, year,id, order)
+
+summary(desp)
+tail(desp)
+length(unique(desp$id))
+length(unique(opi$id))
+
+ll <- which((desp$year=="2023")&(!(desp$dist.ori=="00")));length(ll)
+head(desp[ll,])
+ll <- which((desp$year=="2023")&((desp$dist.ori=="00")));length(ll)
+head(desp[ll,])
+```
+
+### Compute several interesting facts about the data
+```{r}
+#Compute most used transport method
+aggregated_data <- aggregate(pesaix ~ m.main, desp, sum)
+most_used_transport_ordered <- aggregated_data[order(-aggregated_data$pesaix),]
+#Compute most inhabited municipality and district
+aggregated_data <- aggregate(pesaix ~ mun.res, desp, sum)
+most_inhabited_mun_ordered <- aggregated_data[order(-aggregated_data$pesaix),]
+aggregated_data <- aggregate(pesaix ~ dist.res, desp, sum)
+most_inhabited_district_ordered <- aggregated_data[order(-aggregated_data$pesaix),]
+#Compute transport method with most positive reviews (and negative)
+aggregated_data <- data.frame(as.numeric(opi$r.bike), as.numeric(opi$r.bus),as.numeric(opi$r.bus.local),as.numeric(opi$r.busBCN),as.numeric(opi$r.car),as.numeric(opi$r.car.passenger),as.numeric(opi$r.fgc),as.numeric(opi$r.lorry),as.numeric(opi$r.metro), as.numeric(opi$r.moto),as.numeric(opi$r.pubtrans),as.numeric(opi$r.renfe),as.numeric(opi$r.rodalies),as.numeric(opi$r.scooter),as.numeric(opi$r.sharedbike),as.numeric(opi$r.sharedmoto),as.numeric(opi$r.taxi),as.numeric(opi$r.tram),as.numeric(opi$r.walk),opi$pesaix)
+aggregated_data[is.na(aggregated_data)] <- 0
+weighted_scores <- aggregated_data[,1:19] * aggregated_data$opi.pesaix
+most_valued_transport <- sort(colSums(weighted_scores),decreasing = TRUE)
+  #print(most_valued_transport)
+#Compute number of people who teleworks
+response_counts <- opi[!is.na(opi$telework), ]
+response_counts <- tapply(opi$pesaix, opi$telework, sum)
+  #print(response_counts)
+#Compute number of population of each gender
+response_counts <- opi[!is.na(opi$gender), ]
+response_counts <- tapply(opi$pesaix, opi$gender, sum)
+print(response_counts)
+#sum of total pesaix
+total_pesaix <- sum(opi$pesaix)
+print(total_pesaix)
+```
+
+####  We add attributes first and last for guess which travel is it. We also create "desp1"
+```{r}
+inicidia<-lubridate::hms("00:00:00")
+finaldia<-lubridate::hms("24:00:00")
+
+desp$t0 <- lubridate::hms(paste(sprintf("%02d", desp$hour), sprintf("%02d", desp$minute), "00", sep = ":"), roll = TRUE)
+desp$tdur <- lubridate::hms(paste0("00:",sprintf("%02d",desp$duration),":00"), roll = TRUE)
+desp$t1 <- desp$t0 + desp$tdur
+
+desp$m.seq <- apply(desp[, c("m1.mod", "m2.mod", "m3.mod")], 1, function(x) {
+  paste(x[!is.na(x)], collapse = ":")
+})
+
+desp$dm.seq <- apply(desp[, c("dm1.mod", "dm2.mod", "dm3.mod")], 1, function(x) {
+  paste(x[!is.na(x)], collapse = ":")
+})
+
+desp <- desp %>% group_by(id,year) %>% 
+  mutate( 
+    first = as.integer(order == 1),  # create first travel column with boolean values
+    last = as.integer(order == max(order)),  # create last travel column with boolean values
+    m.seq = runner( paste( mode, collapse="-") ), 
+    dm.seq = runner( paste( dmode, collapse="-") ),
+    s.seq = runner( paste( mode, state, sep = "-", collapse="-") ),
+    t.seq = runner(paste(as.numeric(t0)/60, as.numeric(t1)/60, sep = "-",collapse="-"))) %>% as.data.frame()
+
+ll <- which(desp$last == 1)
+desp1 <- desp[ll,]
+```
+
+Tractament desp1
+
+```{r}
+head(desp1[desp1$state=="WH",])
+desp1[ desp1$idyear == "3850-2018",]
+desp1$t.seq <- ifelse(desp1$t1 < finaldia,
+                     paste(0, desp1$t.seq, 1440, sep="-"),
+                     paste(0, desp1$t.seq, as.numeric(desp1$t1)/60, sep="-"))
+desp1$s.seq <- paste("H", desp1$s.seq, sep="-")
+desp1$ttacum <- ifelse(desp1$t1 < finaldia,
+                     1440,
+                     as.numeric(desp1$t1)/60)
+
+# Split the numbers into individual values
+desp1$n.seq <- strsplit(as.character(desp1$t.seq), "-")
+
+# Convert the values to numeric
+desp1$n.seq <- lapply(desp1$n.seq, as.numeric)
+
+# Get the differences between the values
+desp1$n.seq <- lapply(desp1$n.seq, diff)
+
+# Convert the differences back to a string with "-" separator
+desp1$n.seq <- sapply(desp1$n.seq, function(x) paste(x, collapse="-"))
+
+table(desp1$order,desp1$year,useNA="always")
+```
+
+#### Individuals who do not travel are added to the "desp1" dataset
+
+```{r}
+opi$idyear <- paste0(opi$id,'-',opi$year)
+ll <- which(opi$idyear %in% unique(desp$idyear))
+table(opi$year[-ll])
+table(opi$n.trips[-ll],opi$year[-ll], useNA="always")
+# ll <- which((!(opi$id %in% unique(desp$id)))&(opi$year==2022))
+# opi$n.trips[ll] <-0
+```
+
+
+```{r}
+ll <- which((opi$n.trips == 0)&(opi$reason.not.leave!="Telework"))
+#dfaux <- opi[ll,c("id","year","pesaix","pesmos")]
+table(opi$reason.not.leave[ll], useNA="always")
+dfaux <- opi[ll,c("id","year","pesaix")]
+table(opi$n.trips,opi$year,useNA="always")
+dfaux$order <- 0
+dfaux$reason <- "HBH"
+dfaux$hour <- 0
+dfaux$minute <- 0
+dfaux$duration<-1440
+dfaux$state<-"H"
+dfaux$tdur <-lubridate::hms("24:00:00")
+dfaux$m.seq <- "H"
+dfaux$s.seq <- "H"
+dfaux$t.seq <- "0-1440"
+dfaux$ttacum <- 1440
+dfaux$n.seq <- 1440
+
+desp1 <- merge(desp1,dfaux, all = TRUE)
+
+ll <- which((opi$n.trips == 0)&(opi$reason.not.leave=="Telework"))
+#dfaux <- opi[ll,c("id","year","pesaix","pesmos")]
+table(opi$reason.not.leave[ll], useNA="always")
+dfaux <- opi[ll,c("id","year","pesaix")]
+table(opi$n.trips,opi$year,useNA="always")
+dfaux$order <- 0
+dfaux$reason <- "HBH"
+dfaux$hour <- 0
+dfaux$minute <- 0
+dfaux$duration<-1440
+dfaux$state<-"WH"
+dfaux$tdur <-lubridate::hms("24:00:00")
+dfaux$m.seq <- "WH"
+dfaux$s.seq <- "H-WH-H"
+dfaux$t.seq <- "0-540-1080-1440"
+dfaux$ttacum <- 1440
+dfaux$n.seq <- "540-540-360"
+
+desp1 <- merge(desp1,dfaux, all = TRUE)
+desp1[ll,"reason.not.leave"]
+names(opi)
+```
+
+#### Merge opinion and desp datasets to get data from all individuals
+
+```{r}
+desp1 <- merge(desp1, opi[,1:116], by = c('id', 'year'))
+desp1 <- arrange(desp1, year,id, order)
+desp1$pesaix.y <- NULL
+vaux <- which(names(desp1)=="pesaix.x")
+names(desp1)[vaux] <-"pesaix"
+```
+
+#### Clean the dataset from incongruent sequences of displacements
+```{r}
+# find the rows where the sequence attribute contains "--" or intercalated NA
+na_or_dash_rows <- !grepl("NA.*-.*NA|--", desp1$n.seq)
+
+# subset the dataframe to keep only the rows with "--" or intercalated NA
+desp1 <- desp1[na_or_dash_rows, ]
+
+# subset the dataset to remove rows with missing values in TTACUM
+desp1<- desp1[complete.cases(desp1$ttacum), ]
+
+desp1[ desp1$reason.not.leave=="Telework",]
+desp1[ desp1$order==0,]
+desp1[ desp1$order==1,]
+desp1[ desp1$order==2,]
+```
+
+### 3. Enrich datasets with new derivated attributes and measures
+
+#### Calculate TTR
+```{r}
+calculate_ttr <- function(s_seq, n_seq, ttacum) {
+  # Split the sequence attributes into individual elements
+  s_states <- str_split(s_seq, "-")[[1]]
+  n_durations <- as.numeric(str_split(n_seq, "-")[[1]])
+  # Calculate the total time at home
+  total_time_at_home <- sum(n_durations[s_states %in% c("H","WH")])
+  ttr <- ttacum / (total_time_at_home + ttacum)
+  return(ttr)
+}
+
+# Apply the function to the whole dataset
+desp1$ttr <- mapply(calculate_ttr, desp1$s.seq, desp1$n.seq, desp1$ttacum)
+
+desp1[ desp1$reason.not.leave=="Telework",]
+desp1[ desp1$order==0,]
+desp1[ desp1$order==1,]
+idrem <-(desp1$id[which(desp1$hour==99)])
+desp1 <-desp1[-which(desp1$id==idrem),]
+
+tapply(desp1$ttacum,desp1$year, max)
+# Save the merged dataset to a CSV file
+#write.csv(desp1, file = "desp1.csv", row.names = FALSE)
+```
+
+#### dftraminer creation
+
+```{r}
+dftraminer<-matrix(3,nrow=nrow(desp1),ncol=max(desp1$ttacum),byrow=T)
+for (i in 1:nrow(desp1))
+  {
+    ttime <- desp1$ttacum[i]
+    statetime<-as.numeric(unlist(strsplit(desp1$n.seq[i], split="-")))
+    cumtime <- cumsum( statetime )
+    nstates <- length(cumtime)
+    statepur<-factor(unlist(strsplit(desp1$s.seq[i], split="-")), levels=c("A","C","H","O","S","TC","TE","TK","TP","TW","W","WH"), labels=c("A","C","H","O","S","TC","TE","TK","TP","TW","W","WH"))
+    ini <- ifi <- 1
+    for (t in 1:nstates) {
+      ifi <- cumtime[t]
+      #print(desp1$n.seq[i])
+      if ( ifi >= ini) {dftraminer[i,ini:ifi] <- as.numeric(statepur[t])}
+      ini <- ifi +1
+    }
+}
+```
+
+#### Statistics calculations function definition
+```{r message=FALSE, warning=FALSE}
+var.state.duration <- function( df ){
+  vari <- rep(0,nrow(df))
+  mitjana <- rep(0,nrow(df))
+  for (i in 1:nrow(df))
+  {
+    ttime <- df$ttacum[i]
+    statetime<-unlist(strsplit(df$n.seq[i], split="-"))
+    vari[i] <-var(as.numeric(statetime))
+    mitjana[i] <-mean(as.numeric(statetime))
+  }
+  list(var=vari,mean=mitjana)
+}
+```
+
+#### dftraminer.seq creation and we merge desp1 with dftraminer (VERSIÓ LÍDIA)
+
+```{r}
+dftraminer<-as.data.frame(dftraminer) #converteix dftramainer a un dataframe
+dftraminer.data <-desp1
+#dftraminer.data <-cbind(desp1,dftraminer) #junta dftramainer amb desp1 (per les columnes)
+#
+# Per les persones que no han sortit i teletreballen posar en horari de 8 a 16h HW
+# 
+dftraminer.labels <- c("A","C","H","O","S","TC","TE","TK","TP","TW","W","WH") #creació de labels
+dftraminer.scode <- c("A","C","H","O","S","TC","TE","TK","TP","TW","W","WH") #codis de cada estat
+
+table(opi$reason.not.leave)
+
+table(dftraminer.data$reason.not.leave, useNA="always")
+llwh <- which( (dftraminer.data$reason.not.leave == "Telework") & (dftraminer.data$n.trips==0) ); length(llwh)
+#dftraminer.data[llwh,]
+# Entre 8 i 16h es posa WH a tots els qui diuen que teletreballen
+if (length(llwh)>0){
+  for (i in 540:1080) {
+      dftraminer[llwh,i] = ifelse(dftraminer[llwh,i]=="H","WH",dftraminer[llwh,i])
+  }
+  for (i in 1081:2280) {
+      dftraminer[llwh,i] = ifelse(dftraminer[llwh,i]=="WH","H",dftraminer[llwh,i])
+  }
+}
+
+dftraminer[llwh,480:960]
+lv1<- which(names(dftraminer) == "V1") 
+
+countNA <- function(x) {
+                        mis_x <- NULL
+                        for (j in 1:ncol(x)) {mis_x[j] <- sum(is.na(x[,j])) }
+                        mis_x <- as.data.frame(mis_x)
+                        rownames(mis_x) <- names(x)
+                        mis_i <- rep(0,nrow(x))
+                        for (j in 1:ncol(x)) {mis_i <- mis_i + as.numeric(is.na(x[,j])) }
+            list(mis_col=mis_x,mis_ind=mis_i) }
+countNA(dftraminer)
+
+# creació de dftramainer.seq
+dftraminer.seq <- seqdef(dftraminer, lv1:ncol(dftraminer) , alphabet=1:12, states = dftraminer.scode,labels = dftraminer.labels, xtstep =60,tick.last=T,weights=dftraminer.data$pesaix)
+
+attr(dftraminer.seq, "cpal") <- colorRampPalette(brewer.pal(11, "Spectral"))(12) #Generar paleta colors
+table(dftraminer.data$order,dftraminer.data$year,useNA="always")
+# dftraminer <-cbind(desp1,dftraminer)
+```
+
+# Fins aquí Validació 15/12
+
+#### Calculate entropy, nentropy, turbulence, and complexity
+
+```{r}
+dftraminer.data$nentropy <- as.vector(seqient(dftraminer.seq,norm=T))
+dftraminer.data$entropy <- as.vector(seqient(dftraminer.seq,norm=F))
+
+# Turbulence
+dftraminer.data$turbulence <- as.vector(seqST(dftraminer.seq))
+
+# Complexity
+dftraminer.data$complexity <- as.vector(seqici(dftraminer.seq, with.missing=FALSE, silent=TRUE))
+dftraminer.data$var.duration<- var.state.duration(dftraminer.data)$var
+dftraminer.data$mean.duration<- var.state.duration(dftraminer.data)$mean
+dftraminer.data$npur<-(((nchar(dftraminer.data$s.seq)+1)/2)-1)
+ll<-which(dftraminer.data$npur==0)
+dftraminer.data$npur[ll] <- 1
+dftraminer.data$complexity[ll] <- 0.0001 # Threshold applied as minimum
+
+```
+
+
+#### Some plots grouping by education, year and gender 
+
+```{r}
+#in this plot there is no people that stays home and only includes range from 6am to 12pm.
+ll<-which(dftraminer.data$order > 0); length(ll)
+subdftraminer <- dftraminer.data[ll,]
+subdftraminer.seq <- dftraminer.seq[ll, 360:1440]
+attr(subdftraminer.seq, "cpal") <- colorRampPalette(brewer.pal(11, "Spectral"))(12)
+attr(dftraminer.seq, "cpal") <- colorRampPalette(brewer.pal(11, "Spectral"))(12)
+#attr(subdftraminer.seq, "cpal") <- brewer.pal(12, "Paired")
+eixdia <- sort(rep(6:24,60))
+#seqmtplot(subdftraminer.seq, group=subdftraminer$year,with.legend = T, main = "Sequence frequency plot")
+
+seqdplot(dftraminer.seq[ll, 360:1440], group = dftraminer.data$year[ll],  with.legend = T, xlab="Day Time in hours", border = NA, main = "State distr. per year",xtlab=eixdia, ltext=c("Escorting","Casual","Home","Recurrent","School","Tr.Car","e-Scooter","Bike","Public Tr.","Walking","Work","WorkHome"),use.layout=TRUE,rows=3,cols=3)
+
+#seqdplot(subdftraminer.seq, group = subdftraminer$gender,  with.legend = F, xlab="Day Time in hours", border = NA, main = "State distr. per gender",xtlab=eixdia)
+
+#seqmtplot(subdftraminer.seq, group = subdftraminer$gender,  with.legend = F, xlab="States", border = NA, main = "State freq. per gender")
+
+#seqdplot(subdftraminer.seq, group = subdftraminer$education,  with.legend = T, xlab="Day Time in hours", border = NA, main = "State distr. per education",xtlab=eixdia)
+
+#seqmtplot(subdftraminer.seq, group = subdftraminer$education,  with.legend = T, xlab="Day Time in hours", border = NA, main = "State freq. per education")
+```
+
+#### Calculate activity and transport frequencies from 6am to 12pm for different KPIs
+```{r}
+ ll<-which((subdftraminer$order > 0))
+# subdftraminer <- dftraminer[ll,]
+# 
+# ## States frequencies
+# freqs <- seqstatf(subdftraminer.seq)
+# 
+# #state frequencies for male and female
+# ll<-which((subdftraminer$gender == 'M'))
+# m.freqs <- seqstatf(subdftraminer.seq[ll,])
+# f.freqs <- seqstatf(subdftraminer.seq[-ll,])
+# 
+# #state frequencies for years
+ll<-which((subdftraminer$year == '2018'))
+freqs18 <- seqstatf(subdftraminer.seq[ll,]);freqs18
+ll<-which((subdftraminer$year == '2019'))
+freqs19 <- seqstatf(subdftraminer.seq[ll,]);freqs19
+ll<-which((subdftraminer$year == '2020'))
+freqs20 <- seqstatf(subdftraminer.seq[ll,]);freqs20
+ll<-which((subdftraminer$year == '2021'))
+freqs21 <- seqstatf(subdftraminer.seq[ll,]);freqs21
+ll<-which((subdftraminer$year == '2022'))
+freqs22 <- seqstatf(subdftraminer.seq[ll,]);freqs22
+ll<-which((subdftraminer$year == '2023'))
+freqs23 <- seqstatf(subdftraminer.seq[ll,]);freqs23
+ll<-which((subdftraminer$year == '2024'))
+freqs24 <- seqstatf(subdftraminer.seq[ll,]);freqs24
+
+# #state frequencies for years
+# ll<-which((subdftraminer$age.segment == '16-29'))
+# freqs.young <- seqstatf(subdftraminer.seq[ll,])
+# ll<-which((subdftraminer$age.segment == '30-44'))
+# freqs.adults <- seqstatf(subdftraminer.seq[ll,])
+# ll<-which((subdftraminer$age.segment == '45-64'))
+# freqs.adults2 <- seqstatf(subdftraminer.seq[ll,])
+# ll<-which((subdftraminer$age.segment == '65 i més'))
+# freqs.old <- seqstatf(subdftraminer.seq[ll,])
+```
+
+#### Perform MCA (Multiple Correspondence Analysis) with 1000 dimensions
+
+```{r}
+ll<-which((dftraminer.data$order > 0))
+
+subdftraminer<-dftraminer[,360:1440] #es crea subdftraminer on es treuen els que no viatgen i les hores abans deles 6
+subdftraminer.seq <-dftraminer.seq[,360:1440]
+
+subseqfactor <- subdftraminer %>% mutate_at(names(subdftraminer), factor) %>% data.frame()
+
+#seqfplot(subdftraminer.seq,  with.legend = T, xlab="Day Time in hours", border = NA, main = "Patterns Trip Makers",xtlab=eixdia)
+```
+
+# Si cal fer MCA descomentar i comentar la darrera línia
+
+```{r}
+# res.mca <-mca(subseqfactor, nf = 1000)
+# #
+# 
+# save(list=c("res.mca", "subdftraminer","subdftraminer.seq"), file = "ITS_MCA18_24.RData")
+load("ITS_MCA18_24.RData")
+```
+
+Fins aqui 15 des 2025
+
+```{r}
+library(factoextra)
+library(FactoMineR)
+
+# dd<-data.frame(res.mca$rs)
+# sum(res.mca$d^2)/(((12*ncol(subdftraminer))/ncol(subdftraminer))-1)
+# head(dd[,1:20])
+# 
+# res.hcpc <- HCPC( dd, nb.clust=10, kk=5000, graph  = F, consol=F)
+# save(list=c("res.hcpc"), file = "ITS_HCPC18_24.RData")
+load("ITS_HCPC18_24.RData")
+
+sort(table(res.hcpc$data.clust$clust),decreasing=T)
+barplot(sort(table(res.hcpc$data.clust$clust),decreasing=T),col="cyan",xlab="Largest to Smallest clusters")
+100*(res.hcpc$call$t$within[1]-res.hcpc$call$t$within[1:100])/res.hcpc$call$t$within[1]
+str(res.hcpc$data.clust$clust)
+#res.cat <- catdes(res.hcpc$data.clust,which(names(res.hcpc$data.clust)=="clust"),proba=0.99999)
+
+#fviz_nbclust(dd, kmeans, method=c("silhouette"), print.summary=T,k.max = 15) # Optimal is 3
+# fviz_nbclust(dd, kmeans, method=c("wss"), print.summary=T) # Optimal is ?
+#fviz_nbclust(dd, kmeans, method=c("gap_stat"), print.summary=T) # Optimal is 5
+#library(NbClust)
+#NbClust(data = dd, distance = "euclidean", min.nc = 2, max.nc = 10, method = "ward.D")
+
+attr(dftraminer.seq, "cpal") <- colorRampPalette(brewer.pal(11, "Spectral"))(12)
+#attr(subdftraminer.seq, "cpal") <- brewer.pal(12, "Paired")
+eixdia <- sort(rep(6:24,60))
+#seqmtplot(subdftraminer.seq, group=subdftraminer$year,with.legend = T, main = "Sequence frequency plot")
+
+seqdplot(dftraminer.seq[, 360:1440], group = res.hcpc$data.clust$clust,  with.legend = T, xlab="Day Time in hours", border = NA, main = "State distr. per Cluster",xtlab=eixdia, ltext=c("Escorting","Casual","Home","Recurrent","School","Tr.Car","e-Scooter","Bike","Public Tr.","Walking","Work","WorkHome"),use.layout=TRUE,rows=4,cols=3)
+```
+
+#### Plot some graphics to show correlation between entropy, turbulence and complexity and their respective distribution
+
+```{r}
+
+par(mfrow=c(1,3))
+hist(dftraminer.data$entropy, freq=F,col = "orange", main="Histogram - Entropy",xlab="Individual Entropy")
+lines(density(dftraminer.data$entropy), col="blue")
+
+hist(dftraminer.data$turbulence, freq=F,col = "cyan", main="Histogram - Turbulence",xlab="Individual Turbulence")
+lines(density(dftraminer.data$turbulence), col="blue")
+
+hist(dftraminer.data$complexity, freq=F, col = "yellow", main="Histogram - Complexity",xlab="Individual Complexity")
+lines(density(dftraminer.data$complexity), col="blue")
+par(mfrow=c(1,1))
+# 
+cor(dftraminer.data$turbulence,dftraminer.data$entropy)
+cor(dftraminer.data$turbulence,dftraminer.data$complexity)
+cor(dftraminer.data$entropy,dftraminer.data$complexity)
+# 
+par(mfrow=c(1,1))
+plot(dftraminer.data$turbulence,dftraminer.data$entropy,main="Entropy vs Turbulence - Correlation 0.55",xlab="Individual Turbulence", ylab="Entropy",col=dftraminer.data$year)
+plot(dftraminer.data$turbulence,dftraminer.data$complexity,main="Turbulence vs Complexity  - Correlation 0.88",xlab="Individual Turbulence", ylab="Individual Complexity",col=dftraminer.data$year)
+plot(dftraminer.data$entropy,dftraminer.data$complexity,main="Entropy vs Complexity - Correlation 0.87",xlab="Entropy",ylab="Individual Complexity",col=dftraminer.data$year)
+```
+
+#### Save important files
+
+```{r}
+
+dftraminer.data$cluster <- 11
+ll <- which( dftraminer.data$order > 0);length(ll)
+dftraminer.data$cluster <- res.hcpc$data.clust$clust
+table(dftraminer.data$cluster, useNA="always")
+
+names(dftraminer.data)
+#vars_profile <- names(dftraminer.data)[c(2:9,14,24:26,41,45,50,51, 62:66,72:81,92:101,121,176:182)]
+# 
+vars_profile <- c(  "cor.res", "reason.not.leave", "reason.not.work", "mode", "dmode", "cluster","entropy","turbulence","complexity","ttr", "order")
+
+res.cat <- catdes(dftraminer.data[,vars_profile],which(names(dftraminer.data[,vars_profile])=="cluster"),proba=0.99999)
+
+res.cat$test.chi2
+res.cat$category
+res.cat$quanti.var
+res.cat$quanti
+
+table(dftraminer.data$reason.not.leave,dftraminer.data$reason.not.work, useNA="always")
+ll <- which(dftraminer.data$cluster == "10");length(ll)
+#dftraminer.data[ll, ]
+
+# Vull classificar atenent a la seqüència del dia, sense incloure els temps
+
+lldmseq <- c("A","C","H","O","S","TC","TE","TK","TP","TW","W","WH") 
+nbocc <- matrix(0,nrow=nrow(dftraminer.data),ncol=12)
+for (i in 1:12){
+nbocc[,i] <- (str_count(dftraminer.data$s.seq, lldmseq[i]))
+}
+nbocc <-as.data.frame(nbocc)
+names(nbocc) <- lldmseq
+nbocc[is.na(nbocc)] <-0
+head(nbocc)
+
+colSums(nbocc)/nrow(dftraminer.data)
+nbocc$s.seq <-paste(nbocc[,1],nbocc[,2],nbocc[,3],nbocc[,4],nbocc[,5],nbocc[,6],nbocc[,7],nbocc[,8],nbocc[,9],nbocc[,10],nbocc[,11],nbocc[,12],sep="-")
+head(nbocc)
+table(nbocc$s.seq)
+nbocc$activity <- dftraminer.data$activity
+nbocc$gender <- dftraminer.data$gender
+colSums(nbocc[,1:12],na.rm=T)
+
+res.pca <- PCA(nbocc[,c(1:12,14,15)],quali.sup = 13:14,ncp=6)
+summary(res.pca)
+plot(res.pca,choix="var",axes=3:4)
+dimdesc(res.pca)
+
+# dd<-data.frame(res.pca$ind$coord[,1:6])
+# fviz_nbclust(dd, kmeans, method=c("silhouette"), print.summary=T,k.max = 15) # Optimal is 3
+set.seed(12345)
+res.clu <- kmeans( res.pca$ind$coord[,1:6], 10 )
+dftraminer.data$gcluster <- 11
+dftraminer.data$gcluster <- factor(res.clu$cluster)
+table(dftraminer.data$gcluster, useNA="always")
+
+vars_profile <- c(  "cor.res", "reason.not.leave", "reason.not.work", "mode", "dmode", "gcluster")
+res.cat <- catdes(dftraminer.data[,vars_profile],which(names(dftraminer.data[,vars_profile])=="gcluster"),proba=0.99999)
+
+res.cat$test.chi2
+res.cat$category
+res.cat$quanti.var
+res.cat$quanti
+
+attr(dftraminer.seq, "cpal") <- colorRampPalette(brewer.pal(11, "Spectral"))(12)
+#attr(subdftraminer.seq, "cpal") <- brewer.pal(12, "Paired")
+eixdia <- sort(rep(6:24,60))
+#seqmtplot(subdftraminer.seq, group=subdftraminer$year,with.legend = T, main = "Sequence frequency plot")
+
+seqdplot(dftraminer.seq[, 360:1440], group = dftraminer.data$cluster,  with.legend = T, xlab="Day Time in hours", border = NA, main = "State distr. per G Cluster",xtlab=eixdia, ltext=c("Escorting","Casual","Home","Recurrent","School","Tr.Car","e-Scooter","Bike","Public Tr.","Walking","Work","WorkHome"),use.layout=TRUE,rows=4,cols=3)
+
+seqdplot(dftraminer.seq[, 360:1440], group = dftraminer.data$year,  with.legend = T, xlab="Day Time in hours", border = NA, main = "State distribution per Year",xtlab=eixdia, ltext=c("Escorting","Casual","Home","Recurrent","School","Tr.Car","e-Scooter","Bike","Public Tr.","Walking","Work","WorkHome"),use.layout=TRUE,rows=3,cols=3)
+
+save(list=c("desp1","desp","opi", "dftraminer","dftraminer.seq","dftraminer.data", "res.mca","res.hcpc","subseqfactor"), file ="ITS_files18to24.RData")
+
+```
+
+
+
+
+
+
+
